@@ -8,6 +8,10 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
+import { systemClock } from "./adapters/out/clock/system-clock.ts";
+import type { ChatAgent } from "./application/ports/chat-agent.ts";
+import type { Logger } from "./application/ports/logger.ts";
+import { ReplyToMessage } from "./application/reply-to-message.ts";
 import { ConfigStore, secret } from "./config.ts";
 import { openDatabase } from "./db.ts";
 import { DiscordGateway } from "./gateway.ts";
@@ -52,26 +56,41 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 	const souls = new SoulStore(db);
 	souls.ensureSeed(config.all().bot.personality || DEFAULT_SOUL_FALLBACK);
 
-	const gateway = new DiscordGateway(
-		() => config.all(),
-		async (channelId, authorId, text, images) => {
-			const settings = config.all();
-			const role = roleOf(authorId, settings.discord.admin_ids);
+	// ChatAgent provisorio: sessoes do pi + soul + familiaridade (vira adapter pi-agent).
+	const agent: ChatAgent = {
+		ask: ({ channelId, authorId, role, text, images }) => {
 			const soul = souls.bodyFor(channelId);
 			const familiar = familiarityBlock(db, { personId: authorId, channelId });
 			const systemExtra = [soul, familiar].filter(Boolean).join("\n\n");
 			return sessions.ask(channelId, role, text, {
 				source: "discord",
-				model: settings.chat.model,
+				model: config.all().chat.model,
 				systemExtra: systemExtra || undefined,
-				images: images?.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType })),
+				images: images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType })),
 				onTurn: (r) => recordTurn(db, r),
 			});
 		},
-		undefined,
-		(tag) => log.log("info", `logado no Discord como ${tag}`),
+	};
+	const logger: Logger = {
+		info: (msg) => log.log("info", msg),
+		warn: (msg) => log.log("warn", msg),
+	};
+	const replies = new ReplyToMessage({
+		agent,
+		clock: systemClock,
+		logger,
+		settings: () => {
+			const s = config.all();
+			return { cooldownMs: s.bot.reply_cooldown_ms, adminIds: s.discord.admin_ids };
+		},
+	});
+
+	const gateway = new DiscordGateway({
+		settings: () => config.all(),
+		replies,
+		onReady: (tag) => log.log("info", `logado no Discord como ${tag}`),
 		emit,
-		async ({ channelId, authorId, text, reply }) => {
+		onCommand: async ({ channelId, authorId, text, reply }) => {
 			const raw = text.trim();
 			const cmd = raw.split(/\s+/);
 			if (cmd[0] === "!lista" || cmd[0] === "/lista") {
@@ -110,8 +129,8 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 			}
 			return true;
 		},
-		join(root, "outbox"),
-		(m) => {
+		outboxDir: join(root, "outbox"),
+		persist: (m) => {
 			try {
 				db.prepare(
 					"INSERT OR IGNORE INTO messages (channel_id, author_id, author_name, message_id, body, reply_to) VALUES (?,?,?,?,?,?);",
@@ -120,7 +139,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 				/* histórico nunca quebra resposta */
 			}
 		},
-	);
+	});
 
 	const chatKey = secret("CHAT_API_KEY") || secret("OPENCODE_API_KEY");
 	const all = config.all();
@@ -165,6 +184,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 		stopping = true;
 		stopConsolidation?.();
 		config.dispose();
+		replies.stop();
 		await gateway.stop();
 		sessions.dispose();
 		if (server) await new Promise<void>((r) => server?.close(() => r()));

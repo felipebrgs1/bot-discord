@@ -15,10 +15,11 @@ export {
 	type CommandCtx,
 	type CommandHandler,
 	DiscordGateway,
+	discordReplyTarget,
+	type GatewayOptions,
 	isEligibleChannel,
 	isTrigger,
 	type PersistedMessage,
-	type Respond,
 	trackWorking,
 } from "./gateway.ts";
 export { recordTurn, statsOf, type TurnReport } from "./metrics.ts";

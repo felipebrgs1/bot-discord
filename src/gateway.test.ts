@@ -5,13 +5,30 @@ import { describe, expect, it, vi } from "bun:test";
 import { replaceFetch, restoreFetch } from "./test-support/stub-fetch.ts";
 import { FakeClock } from "./test-support/fakes/clock.ts";
 import { DEFAULTS } from "./config.ts";
-import { DiscordGateway, isEligibleChannel, isTrigger } from "./gateway.ts";
+import { ReplyToMessage } from "./application/reply-to-message.ts";
+import type { ImageData } from "./domain/image.ts";
+import { DiscordGateway, discordReplyTarget, type GatewayOptions, isEligibleChannel, isTrigger } from "./gateway.ts";
+import { FakeLogger } from "./test-support/fakes/logger.ts";
 
 const settings = () => ({
 	...DEFAULTS,
 	discord: { guild_id: "g1", channel_ids: ["c1"], admin_ids: [] },
 	bot: { ...DEFAULTS.bot, reply_cooldown_ms: 0 },
 });
+
+type Respond = (channelId: string, authorId: string, text: string, images: ImageData[]) => Promise<string>;
+
+/** Gateway com o caso de uso real e um ChatAgent que chama `respond`. */
+function makeGateway(respond: Respond, over: Partial<GatewayOptions> = {}): DiscordGateway {
+	const clock = over.clock ?? new FakeClock(0);
+	const replies = new ReplyToMessage({
+		agent: { ask: (r) => respond(r.channelId, r.authorId, r.text, [...r.images]) },
+		clock,
+		logger: new FakeLogger(),
+		settings: () => ({ cooldownMs: 0, adminIds: [] }),
+	});
+	return new DiscordGateway({ settings, replies, emit: () => undefined, clock, ...over });
+}
 
 function message(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
@@ -45,16 +62,10 @@ describe("onMessage com imagem", () => {
 				login: async () => undefined,
 				destroy: () => undefined,
 			};
-			const gw = new DiscordGateway(
-				settings,
-				async (_c, _a, text, images) => {
+			const gw = makeGateway(async (_c, _a, text, images) => {
 					seen.push({ text, images });
 					return "vi";
-				},
-				client as never,
-				undefined,
-				() => undefined,
-			);
+				}, { client: client as never });
 			(gw as unknown as { botUserId: string }).botUserId = "bot";
 			await gw.start("tok");
 			const msg = message({
@@ -104,16 +115,10 @@ describe("onMessage com foto anterior no canal", () => {
 				login: async () => undefined,
 				destroy: () => undefined,
 			};
-			const gw = new DiscordGateway(
-				settings,
-				async (_c, _a, text, images) => {
+			const gw = makeGateway(async (_c, _a, text, images) => {
 					seen.push({ text, images });
 					return "vi";
-				},
-				client as never,
-				undefined,
-				() => undefined,
-			);
+				}, { client: client as never });
 			(gw as unknown as { botUserId: string }).botUserId = "bot";
 			await gw.start("tok");
 			const base = {
@@ -178,16 +183,10 @@ describe("onMessage com foto antiga no histórico", () => {
 				login: async () => undefined,
 				destroy: () => undefined,
 			};
-			const gw = new DiscordGateway(
-				settings,
-				async (_c, _a, _t, images) => {
+			const gw = makeGateway(async (_c, _a, _t, images) => {
 					seen.push({ images });
 					return "vi";
-				},
-				client as never,
-				undefined,
-				() => undefined,
-			);
+				}, { client: client as never });
 			(gw as unknown as { botUserId: string }).botUserId = "bot";
 			await gw.start("tok");
 			const history = new Map([
@@ -249,16 +248,10 @@ describe("onMessage com reply em imagem", () => {
 				login: async () => undefined,
 				destroy: () => undefined,
 			};
-			const gw = new DiscordGateway(
-				settings,
-				async (_c, _a, _t, images) => {
+			const gw = makeGateway(async (_c, _a, _t, images) => {
 					seen.push({ images });
 					return "vi";
-				},
-				client as never,
-				undefined,
-				() => undefined,
-			);
+				}, { client: client as never });
 			(gw as unknown as { botUserId: string }).botUserId = "bot";
 			await gw.start("tok");
 			const refMsg = {
@@ -384,18 +377,9 @@ describe("onInteraction (/lista)", () => {
 		);
 		try {
 			const persisted: unknown[] = [];
-			const gw = new DiscordGateway(
-				settings,
-				async () => {
+			const gw = makeGateway(async () => {
 					throw new Error("LLM não deveria ser chamado");
-				},
-				undefined,
-				undefined,
-				() => undefined,
-				undefined,
-				undefined,
-				(m) => void persisted.push(m),
-			);
+				}, { persist: (m) => void persisted.push(m) });
 			const ix = stubInteraction();
 			await gw.onInteraction(ix as never);
 			expect(ix.deferReply as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
@@ -429,13 +413,7 @@ describe("onInteraction (/lista)", () => {
 			}),
 		);
 		try {
-			const gw = new DiscordGateway(
-				settings,
-				async () => "ok",
-				undefined,
-				undefined,
-				() => undefined,
-			);
+			const gw = makeGateway(async () => "ok");
 			const ix = stubInteraction();
 			await gw.onInteraction(ix as never);
 			const edit = ix.editReply as ReturnType<typeof vi.fn>;
@@ -455,13 +433,7 @@ describe("onInteraction (/lista)", () => {
 			]),
 		);
 		try {
-			const gw = new DiscordGateway(
-				settings,
-				async () => "ok",
-				undefined,
-				undefined,
-				() => undefined,
-			);
+			const gw = makeGateway(async () => "ok");
 			const list = stubInteraction();
 			await gw.onInteraction(list as never);
 			const editList = list.editReply as ReturnType<typeof vi.fn>;
@@ -494,13 +466,7 @@ describe("onInteraction (/lista)", () => {
 	});
 
 	it("botão sem lista no canal recebe efêmero", async () => {
-		const gw = new DiscordGateway(
-			settings,
-			async () => "ok",
-			undefined,
-			undefined,
-			() => undefined,
-		);
+		const gw = makeGateway(async () => "ok");
 		const btn = stubInteraction({
 			commandName: undefined,
 			isChatInputCommand: () => false,
@@ -515,13 +481,7 @@ describe("onInteraction (/lista)", () => {
 	});
 
 	it("canal fora da allowlist recebe efêmero", async () => {
-		const gw = new DiscordGateway(
-			settings,
-			async () => "ok",
-			undefined,
-			undefined,
-			() => undefined,
-		);
+		const gw = makeGateway(async () => "ok");
 		const ix = stubInteraction({ channelId: "c9" });
 		await gw.onInteraction(ix as never);
 		const reply = ix.reply as ReturnType<typeof vi.fn>;
@@ -536,7 +496,7 @@ describe("onInteraction (/lista)", () => {
 		});
 		try {
 			const openGuild = () => ({ ...settings(), discord: { guild_id: "", channel_ids: ["c1"], admin_ids: [] } });
-			const gw = new DiscordGateway(openGuild, async () => "ok", undefined, undefined, () => undefined);
+			const gw = makeGateway(async () => "ok", { settings: openGuild });
 			const ix = stubInteraction({ guildId: null });
 			await gw.onInteraction(ix as never);
 			expect(ix.deferReply).not.toHaveBeenCalled();
@@ -548,13 +508,7 @@ describe("onInteraction (/lista)", () => {
 	});
 
 	it("ignora outro comando", async () => {
-		const gw = new DiscordGateway(
-			settings,
-			async () => "ok",
-			undefined,
-			undefined,
-			() => undefined,
-		);
+		const gw = makeGateway(async () => "ok");
 		const ix = stubInteraction({ commandName: "outro" });
 		await gw.onInteraction(ix as never);
 		expect(ix.reply as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
@@ -562,101 +516,92 @@ describe("onInteraction (/lista)", () => {
 });
 
 function stubIncoming() {
-	const sent: unknown[] = [];
-	const reacted: string[] = [];
+	const events: string[] = [];
 	const msg = {
 		id: "m1",
-		reply: vi.fn(async () => undefined),
-		react: vi.fn(async (e: string) => void reacted.push(e)),
+		reply: vi.fn(async (c: unknown) => void events.push(`reply ${String(c)}`)),
+		react: vi.fn(async (e: string) => void events.push(`react ${e}`)),
 		reactions: { cache: new Map([["⏱️", { users: { remove: vi.fn(async () => undefined) } }]]) },
-		channel: { send: vi.fn(async (c: unknown) => void sent.push(c)), sendTyping: vi.fn(async () => undefined) },
+		channel: {
+			send: vi.fn(async (c: unknown) => void events.push(`send ${String(c)}`)),
+			sendTyping: vi.fn(async () => undefined),
+		},
 	};
-	return { sent, reacted, msg };
+	return { events, msg };
 }
 
-describe("replyOne (integração com stubs)", () => {
-	it("responde texto + drena anexo do outbox e apaga", async () => {
-		const base = await mkdtemp(join(tmpdir(), "gw-"));
-		const dir = join(base, "c1");
-		await mkdir(dir, { recursive: true });
-		await writeFile(join(dir, "v.mp4"), "dados");
-		try {
-			const gw = new DiscordGateway(
-				settings,
-				async () => "ok",
-				undefined,
-				undefined,
-				() => undefined,
-				undefined,
-				base,
-			);
-			(gw as unknown as { botUserId: string }).botUserId = "bot";
-			const { sent, reacted, msg } = stubIncoming();
-			await (gw as unknown as { replyOne: (i: unknown) => Promise<void> }).replyOne({
-				message: msg,
-				channelId: "c1",
-				authorId: "u1",
-				text: "baixa isso",
-			});
-			expect(msg.reply).toHaveBeenCalledWith("ok");
-			expect(reacted).toEqual(["⏱️", "✅"]);
-			const fileSend = sent.find((c) => typeof c === "object" && c !== null && "files" in c) as
-				| { files: { attachment: string }[] }
-				| undefined;
-			expect(fileSend?.files[0]?.attachment).toContain("v.mp4");
-			await expect(stat(join(dir, "v.mp4"))).rejects.toThrow(); // apagou
-		} finally {
-			await rm(base, { recursive: true, force: true });
-		}
+describe("discordReplyTarget", () => {
+	it("primeiro pedaco vai como reply, o resto no canal, depois drena o outbox", async () => {
+		const { events, msg } = stubIncoming();
+		const target = discordReplyTarget(msg, "bot", async () => void events.push("outbox"));
+		await target.deliver(["a", "b", "c"]);
+		expect(events).toEqual(["reply a", "send b", "send c", "outbox"]);
 	});
 
-	it("erro vira ❌ + mensagem de falha", async () => {
-		const gw = new DiscordGateway(
-			settings,
-			async () => Promise.reject(new Error("quebrou")),
-			undefined,
-			undefined,
-			() => undefined,
-		);
-		(gw as unknown as { botUserId: string }).botUserId = "bot";
-		const { reacted, msg } = stubIncoming();
-		await (gw as unknown as { replyOne: (i: unknown) => Promise<void> }).replyOne({
-			message: msg,
-			channelId: "c1",
-			authorId: "u1",
-			text: "oi",
-		});
-		expect(reacted).toEqual(["⏱️", "❌"]);
-		const calls = (msg.reply as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
-		expect(calls).toHaveLength(1);
-		expect(calls.some((c) => c.includes("falhei aqui"))).toBe(true);
+	it("falha drena o outbox e responde a mensagem de erro", async () => {
+		const { events, msg } = stubIncoming();
+		const target = discordReplyTarget(msg, "bot", async () => void events.push("outbox"));
+		await target.fail("falhei aqui: x");
+		expect(events).toEqual(["outbox", "reply falhei aqui: x"]);
+	});
+
+	it("reply de erro que falha nao propaga", async () => {
+		const { msg } = stubIncoming();
+		msg.reply = vi.fn(async () => Promise.reject(new Error("sem permissao")));
+		await discordReplyTarget(msg, "bot", async () => undefined).fail("x");
+	});
+
+	it("whileWorking troca o relogio por check e devolve o resultado", async () => {
+		const { events, msg } = stubIncoming();
+		const result = await discordReplyTarget(msg, "bot", async () => undefined).whileWorking(async () => 42);
+		expect(result).toBe(42);
+		expect(events).toEqual(["react ⏱️", "react ✅"]);
 	});
 });
 
-describe("cooldown por canal", () => {
-	it("primeira resposta nao espera; a seguinte espera o que falta do cooldown", async () => {
-		const clock = new FakeClock(100_000);
-		const withCooldown = () => ({ ...settings(), bot: { ...settings().bot, reply_cooldown_ms: 4_000 } });
-		const gw = new DiscordGateway(
-			withCooldown,
-			async () => "ok",
-			undefined,
-			undefined,
-			() => undefined,
-			undefined,
-			undefined,
-			undefined,
-			clock,
-		);
-		(gw as unknown as { botUserId: string }).botUserId = "bot";
-		const replyOne = (gw as unknown as { replyOne: (i: unknown) => Promise<void> }).replyOne.bind(gw);
-		await replyOne({ message: stubIncoming().msg, channelId: "c1", authorId: "u1", text: "a" });
-		expect(clock.sleeps).toEqual([]);
-		clock.advance(1_000);
-		await replyOne({ message: stubIncoming().msg, channelId: "c1", authorId: "u1", text: "b" });
-		expect(clock.sleeps).toEqual([3_000]);
-		await replyOne({ message: stubIncoming().msg, channelId: "c2", authorId: "u1", text: "c" });
-		expect(clock.sleeps).toEqual([3_000]); // outro canal, outro cooldown
+describe("outbox", () => {
+	it("arquivo deixado por tool vai para o canal depois da resposta e e apagado", async () => {
+		const base = await mkdtemp(join(tmpdir(), "gw-"));
+		await mkdir(join(base, "c1"), { recursive: true });
+		await writeFile(join(base, "c1", "v.mp4"), "dados");
+		try {
+			const handlers: Record<string, (m: unknown) => void> = {};
+			const client = {
+				once: () => undefined,
+				on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+				login: async () => undefined,
+				destroy: () => undefined,
+			};
+			const gw = makeGateway(async () => "baixei", { client: client as never, outboxDir: base });
+			(gw as unknown as { botUserId: string }).botUserId = "bot";
+			await gw.start("tok");
+			const events: string[] = [];
+			handlers["messageCreate"]?.(
+				message({
+					id: "m50",
+					content: "baixa isso",
+					mentions: { users: { size: 1 }, has: () => true },
+					attachments: new Map(),
+					stickers: new Map(),
+					reply: vi.fn(async (c: unknown) => void events.push(`reply ${String(c)}`)),
+					react: vi.fn(async () => undefined),
+					reactions: { cache: new Map() },
+					channel: {
+						messages: { cache: new Map() },
+						send: vi.fn(async (c: { files?: { attachment: string }[] }) => {
+							events.push(`send ${c.files?.[0]?.attachment.endsWith("v.mp4") ? "v.mp4" : "?"}`);
+						}),
+						sendTyping: vi.fn(async () => undefined),
+					},
+				}),
+			);
+			await new Promise((r) => setTimeout(r, 50));
+			expect(events).toEqual(["reply baixei", "send v.mp4"]);
+			await expect(stat(join(base, "c1", "v.mp4"))).rejects.toThrow();
+			await gw.stop();
+		} finally {
+			await rm(base, { recursive: true, force: true });
+		}
 	});
 });
 
@@ -678,20 +623,10 @@ describe("memoria visual do canal", () => {
 				login: async () => undefined,
 				destroy: () => undefined,
 			};
-			const gw = new DiscordGateway(
-				settings,
-				async (_c, _a, _t, images) => {
+			const gw = makeGateway(async (_c, _a, _t, images) => {
 					seen.push({ images });
 					return "vi";
-				},
-				client as never,
-				undefined,
-				() => undefined,
-				undefined,
-				undefined,
-				undefined,
-				clock,
-			);
+				}, { client: client as never, clock });
 			(gw as unknown as { botUserId: string }).botUserId = "bot";
 			await gw.start("tok");
 			const base = {

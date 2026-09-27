@@ -2,7 +2,7 @@
  * Discord gateway (Fase 1): events → sessions → replies.
  *
  * Regras de gatilho em domain/trigger.ts; aqui so a traducao do discord.js.
- * Cooldown por canal, fila FIFO de 8 respostas pendentes.
+ * Fila, cooldown e resposta: application/reply-to-message.ts.
  */
 
 import {
@@ -19,10 +19,8 @@ import {
 import type { Clock } from "./application/ports/clock.ts";
 import { systemClock } from "./adapters/out/clock/system-clock.ts";
 import type { BotSettings } from "./config.ts";
-import { cooldownRemaining } from "./domain/cooldown.ts";
+import type { ReplyTarget, ReplyToMessage } from "./application/reply-to-message.ts";
 import { discard, pendingAttachments } from "./outbox.ts";
-import { roleOf } from "./domain/roles.ts";
-import { splitMessage } from "./domain/reply-split.ts";
 import { type ChannelAccess, isAllowedChannel, shouldReply } from "./domain/trigger.ts";
 import { fetchMagnet, LISTA_COMMAND_JSON, listaEmbed, type SkidrowHit, searchSkidrow } from "./tools/skidrow.ts";
 import { collectImageUrls, downloadImages, MAX_VISION_IMAGES, type VisionImage } from "./vision.ts";
@@ -118,8 +116,6 @@ async function referencedImageUrls(m: GuildMessage): Promise<string[]> {
 	return out;
 }
 
-export type Respond = (channelId: string, authorId: string, text: string, images?: VisionImage[]) => Promise<string>;
-
 export interface CommandCtx {
 	channelId: string;
 	authorId: string;
@@ -140,14 +136,6 @@ export interface PersistedMessage {
 
 type GuildMessage = OmitPartialGroupDMChannel<Message<boolean>>;
 
-interface Incoming {
-	message: GuildMessage;
-	channelId: string;
-	authorId: string;
-	text: string;
-	images: VisionImage[];
-}
-
 function channelAccess(settings: BotSettings): ChannelAccess {
 	return { guildId: settings.discord.guild_id, channelIds: settings.discord.channel_ids };
 }
@@ -166,8 +154,6 @@ export function isTrigger(message: GuildMessage, botUserId: string): boolean {
 		repliesToBot: refId ? message.channel.messages.cache.get(refId)?.author.id === botUserId : false,
 	});
 }
-
-const MAX_QUEUE = 8;
 
 const WORKING_EMOJI = "\u23F1\uFE0F"; // ⏱️ while working
 const DONE_EMOJI = "\u2705"; // ✅ on success
@@ -247,17 +233,26 @@ function magnetRow(n: number): ActionRowBuilder<ButtonBuilder>[] {
 	return [row];
 }
 
+export interface GatewayOptions {
+	settings: () => BotSettings;
+	replies: ReplyToMessage;
+	client?: Client;
+	onReady?: (tag: string) => void;
+	emit?: (msg: string, attrs?: Record<string, unknown>) => void;
+	onCommand?: CommandHandler;
+	outboxDir?: string;
+	persist?: (m: PersistedMessage) => void;
+	clock?: Clock;
+}
+
 export class DiscordGateway {
 	private readonly client: Client;
-	private readonly queues = new Map<string, Incoming[]>();
-	private readonly running = new Set<string>();
-	private readonly lastReply = new Map<string, number>();
 	private readonly skidrowTop = new Map<string, { hits: SkidrowHit[]; at: number }>();
 	private readonly channelImages = new Map<string, { urls: string[]; at: number }>();
 	private botUserId = "";
 
 	private readonly getSettings: () => BotSettings;
-	private readonly respond: Respond;
+	private readonly replies: ReplyToMessage;
 	private readonly onReady: ((tag: string) => void) | undefined;
 	private readonly emit: (msg: string, attrs?: Record<string, unknown>) => void;
 	private readonly onCommand: CommandHandler | undefined;
@@ -265,27 +260,17 @@ export class DiscordGateway {
 	private readonly persist: ((m: PersistedMessage) => void) | undefined;
 	private readonly clock: Clock;
 
-	constructor(
-		getSettings: () => BotSettings,
-		respond: Respond,
-		client?: Client,
-		onReady?: (tag: string) => void,
-		emit: (msg: string, attrs?: Record<string, unknown>) => void = (m) => console.log(m),
-		onCommand?: CommandHandler,
-		outboxDir?: string,
-		persist?: (m: PersistedMessage) => void,
-		clock: Clock = systemClock,
-	) {
-		this.getSettings = getSettings;
-		this.respond = respond;
-		this.onReady = onReady;
-		this.emit = emit;
-		this.onCommand = onCommand;
-		this.outboxDir = outboxDir;
-		this.persist = persist;
-		this.clock = clock;
+	constructor(options: GatewayOptions) {
+		this.getSettings = options.settings;
+		this.replies = options.replies;
+		this.onReady = options.onReady;
+		this.emit = options.emit ?? ((m) => console.log(m));
+		this.onCommand = options.onCommand;
+		this.outboxDir = options.outboxDir;
+		this.persist = options.persist;
+		this.clock = options.clock ?? systemClock;
 		this.client =
-			client ??
+			options.client ??
 			new Client({
 				intents: [
 					GatewayIntentBits.Guilds,
@@ -298,16 +283,6 @@ export class DiscordGateway {
 
 	settings(): BotSettings {
 		return this.getSettings();
-	}
-
-	/** Test hook: last reply timestamp per channel. */
-	lastReplyAt(channelId: string): number {
-		return this.lastReply.get(channelId) ?? 0;
-	}
-
-	/** Test hook: pending queue depth per channel. */
-	queueDepth(channelId: string): number {
-		return this.queues.get(channelId)?.length ?? 0;
 	}
 
 	async start(token: string): Promise<void> {
@@ -470,8 +445,6 @@ export class DiscordGateway {
 
 	async stop(): Promise<void> {
 		this.client.destroy();
-		this.queues.clear();
-		this.running.clear();
 	}
 
 	private async onMessage(message: Message): Promise<void> {
@@ -533,86 +506,50 @@ export class DiscordGateway {
 		}
 		const images = await downloadImages(urls).catch(() => [] as VisionImage[]);
 		const text = m.content || (images.length > 0 ? "(imagem anexada)" : "");
-		const incoming: Incoming = {
-			message: m,
-			channelId: m.channelId,
-			authorId: m.author.id,
-			text,
-			images,
-		};
-		let queue = this.queues.get(m.channelId);
-		if (!queue) {
-			queue = [];
-			this.queues.set(m.channelId, queue);
-		}
-		if (queue.length >= MAX_QUEUE) return; // full: drop (like the Go bot)
-		queue.push(incoming);
-		void this.pump(m.channelId);
+		const target = discordReplyTarget(m, this.botUserId, () => this.drainOutbox(m));
+		const accepted = this.replies.submit({ channelId: m.channelId, authorId: m.author.id, text, images }, target);
+		if (!accepted) this.emit(`fila cheia canal=${m.channelId}: mensagem descartada`);
 	}
 
-	private async pump(channelId: string): Promise<void> {
-		if (this.running.has(channelId)) return;
-		this.running.add(channelId);
-		try {
-			for (;;) {
-				const queue = this.queues.get(channelId);
-				const next = queue?.shift();
-				if (!next) break;
-				await this.replyOne(next);
-			}
-		} finally {
-			this.running.delete(channelId);
-		}
-	}
-
-	private async drainOutbox(incoming: Incoming): Promise<void> {
+	private async drainOutbox(message: GuildMessage): Promise<void> {
 		if (!this.outboxDir) return;
-		const files = await pendingAttachments(this.outboxDir, incoming.channelId);
+		const files = await pendingAttachments(this.outboxDir, message.channelId);
 		for (const file of files.slice(0, 3)) {
 			try {
-				await incoming.message.channel.send({ files: [{ attachment: file }] });
+				await message.channel.send({ files: [{ attachment: file }] });
 			} catch (err) {
-				this.emit(`anexo ERRO canal=${incoming.channelId}: ${err instanceof Error ? err.message : String(err)}`);
+				this.emit(`anexo ERRO canal=${message.channelId}: ${err instanceof Error ? err.message : String(err)}`);
 				break;
 			} finally {
 				await discard(file);
 			}
 		}
 	}
+}
 
-	private async replyOne(incoming: Incoming): Promise<void> {
-		const settings = this.getSettings();
-		const wait = cooldownRemaining(
-			this.clock.now(),
-			this.lastReply.get(incoming.channelId),
-			settings.bot.reply_cooldown_ms,
-		);
-		if (wait > 0) await this.clock.sleep(wait);
-		try {
-			const role = roleOf(incoming.authorId, settings.discord.admin_ids);
-			this.emit(`resposta canal=${incoming.channelId} role=${role} len=${incoming.text.length}`);
-			const answer = await trackWorking(incoming.message, this.botUserId, () =>
-				this.respond(incoming.channelId, incoming.authorId, incoming.text, incoming.images),
-			);
-			this.emit(`resposta ok canal=${incoming.channelId} len=${answer.length}`);
-			this.lastReply.set(incoming.channelId, this.clock.now());
-			const chunks = splitMessage(answer);
-			let first = true;
-			for (const chunk of chunks) {
-				if (first) {
-					await incoming.message.reply(chunk);
-					first = false;
-				} else {
-					await incoming.message.channel.send(chunk);
-				}
+type ReplyableMessage = Reactable & {
+	reply(text: string): Promise<unknown>;
+	channel: { send(text: string): Promise<unknown> };
+};
+
+/** ReplyTarget do Discord: indicador por reacao, reply + mensagens seguintes, outbox no fim. */
+export function discordReplyTarget(
+	message: ReplyableMessage,
+	botUserId: string,
+	afterReply: () => Promise<void>,
+): ReplyTarget {
+	return {
+		whileWorking: (work) => trackWorking(message, botUserId, work),
+		async deliver(chunks) {
+			for (const [i, chunk] of chunks.entries()) {
+				if (i === 0) await message.reply(chunk);
+				else await message.channel.send(chunk);
 			}
-			await this.drainOutbox(incoming);
-		} catch (err) {
-			await this.drainOutbox(incoming);
-			this.emit(`resposta ERRO canal=${incoming.channelId}: ${err instanceof Error ? err.message : String(err)}`);
-			await incoming.message
-				.reply(`falhei aqui: ${err instanceof Error ? err.message : String(err)}`)
-				.catch(() => undefined);
-		}
-	}
+			await afterReply();
+		},
+		async fail(text) {
+			await afterReply();
+			await message.reply(text).catch(() => undefined);
+		},
+	};
 }
