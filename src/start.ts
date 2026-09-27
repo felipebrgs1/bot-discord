@@ -15,7 +15,13 @@ import { ReplyToMessage } from "./application/reply-to-message.ts";
 import { SqliteConfigStore } from "./adapters/out/sqlite/config-store.ts";
 import { openDatabase } from "./adapters/out/sqlite/db.ts";
 import { DiscordGateway } from "./gateway.ts";
-import { apiLlmCaller, familiarityBlock, startConsolidation } from "./memory/index.ts";
+import { startConsolidationLoop } from "./adapters/in/scheduler/consolidation-loop.ts";
+import { ChatJsonExtractor } from "./adapters/out/llm/chat-json-extractor.ts";
+import { SqliteMemoryStore } from "./adapters/out/sqlite/memory-store.ts";
+import { SqliteMessageStore } from "./adapters/out/sqlite/message-store.ts";
+import { ConsolidateMemory } from "./application/consolidate-memory.ts";
+import { MessageLog } from "./application/message-log.ts";
+import { Persona } from "./application/persona.ts";
 import { recordTurn } from "./metrics.ts";
 import { SqliteSoulStore } from "./adapters/out/sqlite/soul-store.ts";
 
@@ -58,13 +64,20 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 	);
 	const souls = new SqliteSoulStore(db);
 	souls.ensureSeed(config.all().bot.personality || DEFAULT_SOUL_FALLBACK);
+	const messages = new SqliteMessageStore(db);
+	const memories = new SqliteMemoryStore(db);
+	const persona = new Persona(souls, memories);
+
+	const logger: Logger = {
+		info: (msg) => log.log("info", msg),
+		warn: (msg) => log.log("warn", msg),
+	};
+	const messageLog = new MessageLog(messages, logger);
 
 	// ChatAgent provisorio: sessoes do pi + soul + familiaridade (vira adapter pi-agent).
 	const agent: ChatAgent = {
 		ask: ({ channelId, authorId, role, text, images }) => {
-			const soul = souls.bodyFor(channelId);
-			const familiar = familiarityBlock(db, { personId: authorId, channelId });
-			const systemExtra = [soul, familiar].filter(Boolean).join("\n\n");
+			const systemExtra = persona.systemPromptFor(channelId, authorId);
 			return sessions.ask(channelId, role, text, {
 				source: "discord",
 				model: config.all().chat.model,
@@ -73,10 +86,6 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 				onTurn: (r) => recordTurn(db, r),
 			});
 		},
-	};
-	const logger: Logger = {
-		info: (msg) => log.log("info", msg),
-		warn: (msg) => log.log("warn", msg),
 	};
 	const replies = new ReplyToMessage({
 		agent,
@@ -133,27 +142,26 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 			return true;
 		},
 		outboxDir: join(root, "outbox"),
-		persist: (m) => {
-			try {
-				db.prepare(
-					"INSERT OR IGNORE INTO messages (channel_id, author_id, author_name, message_id, body, reply_to) VALUES (?,?,?,?,?,?);",
-				).run(m.channelId, m.authorId, m.authorName, m.messageId, m.body.slice(0, 4000), m.replyTo ?? null);
-			} catch {
-				/* histórico nunca quebra resposta */
-			}
-		},
+		persist: (m) => messageLog.record(m),
 	});
 
 	const chatKey = secret("CHAT_API_KEY") || secret("OPENCODE_API_KEY");
 	const all = config.all();
 	const stopConsolidation =
 		chatKey && all.chat.model
-			? startConsolidation(db, apiLlmCaller(all.chat.base_url, chatKey, all.chat.model), {
-					channels: all.discord.channel_ids,
-					batchSize: all.memory.batch_size,
-					intervalMs: all.memory.interval_ms,
-					onLog: (msg, attrs) => log.log("info", msg, attrs),
-				})
+			? startConsolidationLoop(
+					new ConsolidateMemory({
+						messages,
+						memories,
+						logger,
+						extractor: new ChatJsonExtractor({ baseUrl: all.chat.base_url, apiKey: chatKey, model: all.chat.model }),
+					}),
+					{
+						channels: () => config.all().discord.channel_ids,
+						batchSize: all.memory.batch_size,
+						intervalMs: all.memory.interval_ms,
+					},
+				)
 			: undefined;
 	if (!chatKey) log.log("warn", "sem CHAT_API_KEY/OPENCODE_API_KEY: consolidação desligada");
 
@@ -174,6 +182,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 				webDir: options.webDir ?? join(root, "web", "dist"),
 				password: secret("DASHBOARD_PASSWORD"),
 				souls,
+				persona,
 			},
 			port,
 			options.dashboardHost ?? "127.0.0.1",

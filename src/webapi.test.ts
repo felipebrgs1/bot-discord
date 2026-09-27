@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from "bun:test";
 import { SqliteConfigStore } from "./adapters/out/sqlite/config-store.ts";
 import { migrate } from "./adapters/out/sqlite/db.ts";
 import { ChannelSessions, type SessionFactory } from "./sessions.ts";
+import { SqliteMemoryStore } from "./adapters/out/sqlite/memory-store.ts";
 import { SqliteSoulStore } from "./adapters/out/sqlite/soul-store.ts";
+import { Persona } from "./application/persona.ts";
 import { createWebHandler, type WebDeps } from "./webapi.ts";
 import { LogBuffer } from "./weblog.ts";
 
@@ -41,6 +43,7 @@ function deps(password = ""): WebDeps & { db: DatabaseSync } {
 		webDir: "/nao-existe",
 		password,
 		souls: new SqliteSoulStore(db),
+		persona: new Persona(new SqliteSoulStore(db), new SqliteMemoryStore(db)),
 	};
 }
 

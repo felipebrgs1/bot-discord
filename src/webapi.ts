@@ -12,7 +12,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { join, normalize, sep } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import type { ConfigStore } from "./application/ports/config-store.ts";
-import { familiarityBlock } from "./memory/index.ts";
+import type { Persona } from "./application/persona.ts";
 import { recordTurn } from "./metrics.ts";
 import { roleOf } from "./domain/roles.ts";
 import type { ChannelSessions } from "./sessions.ts";
@@ -30,6 +30,7 @@ export interface WebDeps {
 	/** Senha do painel (DASHBOARD_PASSWORD); vazio = sem login. */
 	password: string;
 	souls: SoulStore;
+	persona: Persona;
 }
 
 const SESSION_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -143,7 +144,7 @@ function emptyStats(): Record<string, unknown> {
 }
 
 export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: ServerResponse) => void {
-	const { db, config, sessions, log, webDir, password, souls } = deps;
+	const { db, config, sessions, log, webDir, password, souls, persona } = deps;
 
 	const authed = (req: IncomingMessage): boolean => {
 		if (!password) return true;
@@ -639,8 +640,7 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 					: () => undefined;
 			let answer: string;
 			try {
-				const familiar = familiarityBlock(db, { personId: settings.dashboard.web_user_id, channelId: key });
-				const systemExtra = [souls.bodyFor(key), familiar].filter(Boolean).join("\n\n");
+				const systemExtra = persona.systemPromptFor(key, settings.dashboard.web_user_id);
 				answer = await sessions.ask(key, role, content, {
 					source: "web",
 					model: settings.chat.model,
