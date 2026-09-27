@@ -118,7 +118,7 @@ Destino previsto:
 |---|---|
 | ~~`split.ts`~~ | `domain/reply-split.ts` (feito) |
 | ~~`roles.ts`~~ | `domain/roles.ts` (feito; nomes de tools do pi ficaram em `sessions.ts`) |
-| `gateway.ts` | `domain` (gatilho, cooldown) + `application/handle-message.ts` + `adapters/in/discord/` |
+| `gateway.ts` | `domain` (gatilho e cooldown: feito) + `application/handle-message.ts` + `adapters/in/discord/` |
 | `vision.ts` | `adapters/in/discord/attachments.ts` |
 | `sessions.ts` | `adapters/out/pi-agent/` (implementa `ChatAgent`) |
 | `tools/*.ts` | `adapters/in/pi-tools/` + casos de uso + `adapters/out/{web,ytdlp,skidrow}` |

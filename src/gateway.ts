@@ -16,7 +16,10 @@ import {
 	type Message,
 	type OmitPartialGroupDMChannel,
 } from "discord.js";
+import type { Clock } from "./application/ports/clock.ts";
+import { systemClock } from "./adapters/out/clock/system-clock.ts";
 import type { BotSettings } from "./config.ts";
+import { cooldownRemaining } from "./domain/cooldown.ts";
 import { discard, pendingAttachments } from "./outbox.ts";
 import { roleOf } from "./domain/roles.ts";
 import { splitMessage } from "./domain/reply-split.ts";
@@ -260,6 +263,7 @@ export class DiscordGateway {
 	private readonly onCommand: CommandHandler | undefined;
 	private readonly outboxDir: string | undefined;
 	private readonly persist: ((m: PersistedMessage) => void) | undefined;
+	private readonly clock: Clock;
 
 	constructor(
 		getSettings: () => BotSettings,
@@ -270,6 +274,7 @@ export class DiscordGateway {
 		onCommand?: CommandHandler,
 		outboxDir?: string,
 		persist?: (m: PersistedMessage) => void,
+		clock: Clock = systemClock,
 	) {
 		this.getSettings = getSettings;
 		this.respond = respond;
@@ -278,6 +283,7 @@ export class DiscordGateway {
 		this.onCommand = onCommand;
 		this.outboxDir = outboxDir;
 		this.persist = persist;
+		this.clock = clock;
 		this.client =
 			client ??
 			new Client({
@@ -393,7 +399,7 @@ export class DiscordGateway {
 
 	/** Guarda URLs de imagem vistas no canal (memória visual curta, 10 min). */
 	private rememberImageUrls(channelId: string, urls: string[]): void {
-		const now = Date.now();
+		const now = this.clock.now();
 		for (const [id, e] of this.channelImages) {
 			if (now - e.at > RECENT_IMAGE_TTL_MS) this.channelImages.delete(id);
 		}
@@ -406,7 +412,7 @@ export class DiscordGateway {
 	/** URLs recentes do canal (mais novas por último), vazias se expiradas. */
 	private recentImageUrls(channelId: string): string[] {
 		const e = this.channelImages.get(channelId);
-		if (!e || Date.now() - e.at > RECENT_IMAGE_TTL_MS) {
+		if (!e || this.clock.now() - e.at > RECENT_IMAGE_TTL_MS) {
 			this.channelImages.delete(channelId);
 			return [];
 		}
@@ -415,7 +421,7 @@ export class DiscordGateway {
 
 	/** Guarda o top 3 do canal p/ os botões 1/2/3 (expira em 15 min). */
 	private rememberTop(channelId: string, hits: SkidrowHit[]): void {
-		const now = Date.now();
+		const now = this.clock.now();
 		for (const [id, e] of this.skidrowTop) {
 			if (now - e.at > SKIDROW_TTL_MS) this.skidrowTop.delete(id);
 		}
@@ -427,7 +433,7 @@ export class DiscordGateway {
 		if (!interaction.isButton() || !interaction.customId.startsWith("skr:")) return;
 		const idx = Number(interaction.customId.slice(4));
 		const entry = this.skidrowTop.get(interaction.channelId);
-		const hit = entry && Date.now() - entry.at <= SKIDROW_TTL_MS ? entry.hits[idx] : undefined;
+		const hit = entry && this.clock.now() - entry.at <= SKIDROW_TTL_MS ? entry.hits[idx] : undefined;
 		if (!hit) {
 			try {
 				await interaction.reply({ content: "lista expirou — rode /lista de novo.", ephemeral: true });
@@ -576,12 +582,12 @@ export class DiscordGateway {
 
 	private async replyOne(incoming: Incoming): Promise<void> {
 		const settings = this.getSettings();
-		const now = Date.now();
-		const cooldown = settings.bot.reply_cooldown_ms;
-		const elapsed = now - (this.lastReply.get(incoming.channelId) ?? 0);
-		if (elapsed < cooldown) {
-			await new Promise((r) => setTimeout(r, cooldown - elapsed));
-		}
+		const wait = cooldownRemaining(
+			this.clock.now(),
+			this.lastReply.get(incoming.channelId),
+			settings.bot.reply_cooldown_ms,
+		);
+		if (wait > 0) await this.clock.sleep(wait);
 		try {
 			const role = roleOf(incoming.authorId, settings.discord.admin_ids);
 			this.emit(`resposta canal=${incoming.channelId} role=${role} len=${incoming.text.length}`);
@@ -589,7 +595,7 @@ export class DiscordGateway {
 				this.respond(incoming.channelId, incoming.authorId, incoming.text, incoming.images),
 			);
 			this.emit(`resposta ok canal=${incoming.channelId} len=${answer.length}`);
-			this.lastReply.set(incoming.channelId, Date.now());
+			this.lastReply.set(incoming.channelId, this.clock.now());
 			const chunks = splitMessage(answer);
 			let first = true;
 			for (const chunk of chunks) {

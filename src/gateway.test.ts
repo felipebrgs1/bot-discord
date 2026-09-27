@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "bun:test";
 import { replaceFetch, restoreFetch } from "./test-support/stub-fetch.ts";
+import { FakeClock } from "./test-support/fakes/clock.ts";
 import { DEFAULTS } from "./config.ts";
 import { DiscordGateway, isEligibleChannel, isTrigger } from "./gateway.ts";
 
@@ -629,5 +630,107 @@ describe("replyOne (integração com stubs)", () => {
 		const calls = (msg.reply as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
 		expect(calls).toHaveLength(1);
 		expect(calls.some((c) => c.includes("falhei aqui"))).toBe(true);
+	});
+});
+
+describe("cooldown por canal", () => {
+	it("primeira resposta nao espera; a seguinte espera o que falta do cooldown", async () => {
+		const clock = new FakeClock(100_000);
+		const withCooldown = () => ({ ...settings(), bot: { ...settings().bot, reply_cooldown_ms: 4_000 } });
+		const gw = new DiscordGateway(
+			withCooldown,
+			async () => "ok",
+			undefined,
+			undefined,
+			() => undefined,
+			undefined,
+			undefined,
+			undefined,
+			clock,
+		);
+		(gw as unknown as { botUserId: string }).botUserId = "bot";
+		const replyOne = (gw as unknown as { replyOne: (i: unknown) => Promise<void> }).replyOne.bind(gw);
+		await replyOne({ message: stubIncoming().msg, channelId: "c1", authorId: "u1", text: "a" });
+		expect(clock.sleeps).toEqual([]);
+		clock.advance(1_000);
+		await replyOne({ message: stubIncoming().msg, channelId: "c1", authorId: "u1", text: "b" });
+		expect(clock.sleeps).toEqual([3_000]);
+		await replyOne({ message: stubIncoming().msg, channelId: "c2", authorId: "u1", text: "c" });
+		expect(clock.sleeps).toEqual([3_000]); // outro canal, outro cooldown
+	});
+});
+
+describe("memoria visual do canal", () => {
+	it("foto com mais de 10 min nao entra na resposta", async () => {
+		replaceFetch(async () => ({
+			ok: true,
+			status: 200,
+			headers: { get: (h: string) => (h === "content-type" ? "image/png" : null) },
+			arrayBuffer: async () => new TextEncoder().encode("IMG").buffer as ArrayBuffer,
+		}));
+		try {
+			const clock = new FakeClock(0);
+			const seen: { images?: unknown[] }[] = [];
+			const handlers: Record<string, (m: unknown) => void> = {};
+			const client = {
+				once: () => undefined,
+				on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+				login: async () => undefined,
+				destroy: () => undefined,
+			};
+			const gw = new DiscordGateway(
+				settings,
+				async (_c, _a, _t, images) => {
+					seen.push({ images });
+					return "vi";
+				},
+				client as never,
+				undefined,
+				() => undefined,
+				undefined,
+				undefined,
+				undefined,
+				clock,
+			);
+			(gw as unknown as { botUserId: string }).botUserId = "bot";
+			await gw.start("tok");
+			const base = {
+				reply: vi.fn(async () => undefined),
+				react: vi.fn(async () => undefined),
+				reactions: { cache: new Map() },
+				channel: {
+					messages: { cache: new Map() },
+					send: vi.fn(async () => undefined),
+					sendTyping: vi.fn(async () => undefined),
+				},
+			};
+			handlers["messageCreate"]?.(
+				message({
+					id: "m40",
+					content: "",
+					attachments: new Map([["a1", { contentType: "image/png", size: 3, url: "https://cdn/velha.png" }]]),
+					stickers: new Map(),
+					...base,
+				}),
+			);
+			await new Promise((r) => setTimeout(r, 20));
+			clock.advance(10 * 60 * 1000 + 1);
+			handlers["messageCreate"]?.(
+				message({
+					id: "m41",
+					content: "e essa foto?",
+					mentions: { users: { size: 1 }, has: () => true },
+					attachments: new Map(),
+					stickers: new Map(),
+					...base,
+				}),
+			);
+			await new Promise((r) => setTimeout(r, 50));
+			expect(seen).toHaveLength(1);
+			expect(seen[0]?.images).toEqual([]);
+			await gw.stop();
+		} finally {
+			restoreFetch();
+		}
 	});
 });
