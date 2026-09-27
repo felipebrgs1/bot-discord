@@ -6,6 +6,7 @@
  * and disposed when idle past `idleMs` (swept on every access).
  */
 
+import type { ImageContent } from "@earendil-works/pi-ai";
 import {
 	type AgentSession,
 	createAgentSession,
@@ -62,6 +63,7 @@ export interface AskOpts {
 	model?: string;
 	provider?: string;
 	systemExtra?: string;
+	images?: ImageContent[];
 	onTurn?: (report: TurnReport) => void;
 }
 
@@ -112,7 +114,7 @@ export class ChannelSessions {
 		const before = statsOf(session);
 		const started = Date.now();
 		try {
-			await session.prompt(message);
+			await session.prompt(message, opts?.images?.length ? { images: opts.images } : undefined);
 			if (typeof session.waitForIdle === "function") await session.waitForIdle();
 			const text = typeof session.getLastAssistantText === "function" ? (session.getLastAssistantText() ?? "") : "";
 			opts?.onTurn?.(this.turnReport(session, before, statsOf(session), started, "success", opts));

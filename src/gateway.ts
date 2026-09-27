@@ -7,13 +7,34 @@
  * - per-channel cooldown, FIFO queue of 8 pending replies
  */
 
-import { Client, Events, GatewayIntentBits, type Message, type OmitPartialGroupDMChannel } from "discord.js";
+import {
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	Client,
+	Events,
+	GatewayIntentBits,
+	type Interaction,
+	type Message,
+	type OmitPartialGroupDMChannel,
+} from "discord.js";
 import type { BotSettings } from "./config.ts";
 import { discard, pendingAttachments } from "./outbox.ts";
 import { roleOf } from "./roles.ts";
 import { splitMessage } from "./split.ts";
+import { fetchMagnet, LISTA_COMMAND_JSON, listaEmbed, type SkidrowHit, searchSkidrow } from "./tools/skidrow.ts";
+import { collectImageUrls, downloadImages, type VisionImage } from "./vision.ts";
 
-export type Respond = (channelId: string, authorId: string, text: string) => Promise<string>;
+/** Itera Collection/Map de anexos (ou nada, quando ausente). */
+function valuesOf<T>(c: { values(): Iterable<T> } | undefined): Iterable<T> | undefined {
+	try {
+		return c?.values();
+	} catch {
+		return undefined;
+	}
+}
+
+export type Respond = (channelId: string, authorId: string, text: string, images?: VisionImage[]) => Promise<string>;
 
 export interface CommandCtx {
 	channelId: string;
@@ -40,6 +61,7 @@ interface Incoming {
 	channelId: string;
 	authorId: string;
 	text: string;
+	images: VisionImage[];
 }
 
 export function isEligibleChannel(message: Message, settings: BotSettings): boolean {
@@ -124,11 +146,29 @@ export async function trackWorking<T>(message: Reactable, botUserId: string, wor
 	}
 }
 
+const SKIDROW_TTL_MS = 15 * 60 * 1000;
+
+/** Linha de botões 1..n p/ escolher o magnet (some quando não há hits). */
+function magnetRow(n: number): ActionRowBuilder<ButtonBuilder>[] {
+	if (n <= 0) return [];
+	const row = new ActionRowBuilder<ButtonBuilder>();
+	for (let i = 0; i < Math.min(n, 3); i++) {
+		row.addComponents(
+			new ButtonBuilder()
+				.setCustomId(`skr:${i}`)
+				.setLabel(`${i + 1}`)
+				.setStyle(ButtonStyle.Primary),
+		);
+	}
+	return [row];
+}
+
 export class DiscordGateway {
 	private readonly client: Client;
 	private readonly queues = new Map<string, Incoming[]>();
 	private readonly running = new Set<string>();
 	private readonly lastReply = new Map<string, number>();
+	private readonly skidrowTop = new Map<string, { hits: SkidrowHit[]; at: number }>();
 	private botUserId = "";
 
 	private readonly getSettings: () => BotSettings;
@@ -186,11 +226,137 @@ export class DiscordGateway {
 		this.client.once(Events.ClientReady, (c) => {
 			this.botUserId = c.user.id;
 			this.onReady?.(c.user.tag);
+			void this.registerCommands();
 		});
 		this.client.on(Events.MessageCreate, (m) => {
 			void this.onMessage(m as Message);
 		});
+		this.client.on(Events.InteractionCreate, (i) => {
+			void this.onInteraction(i as Interaction);
+		});
 		await this.client.login(token);
+	}
+
+	/** Registra /lista na guild (instantâneo; global demoraria até 1h). */
+	private async registerCommands(): Promise<void> {
+		try {
+			const guildId = this.getSettings().discord.guild_id;
+			if (guildId) {
+				const guild = await this.client.guilds.fetch(guildId);
+				await guild.commands.set([LISTA_COMMAND_JSON]);
+			} else {
+				await this.client.application?.commands.set([LISTA_COMMAND_JSON]);
+			}
+			this.emit("slash commands registrados: /lista");
+		} catch (err) {
+			this.emit(`slash commands ERRO: ${err instanceof Error ? err.message : String(err)}`);
+		}
+	}
+
+	/**
+	 * Slash command /lista: lista o top 3 do Skidrow sem passar pelo LLM —
+	 * por isso nunca cai na recusa anti-pirataria da soul/modelo.
+	 * Os botões 1/2/3 trazem o magnet da opção (via cache do canal).
+	 */
+	async onInteraction(interaction: Interaction): Promise<void> {
+		if (interaction.isButton()) {
+			await this.onMagnetButton(interaction);
+			return;
+		}
+		if (!interaction.isChatInputCommand() || interaction.commandName !== "lista") return;
+		const settings = this.getSettings();
+		const sameGuild = settings.discord.guild_id === "" || interaction.guildId === settings.discord.guild_id;
+		if (!sameGuild || !settings.discord.channel_ids.includes(interaction.channelId)) {
+			try {
+				await interaction.reply({ content: "comando indisponível neste canal.", ephemeral: true });
+			} catch {
+				/* resposta efêmera nunca quebra o gateway */
+			}
+			return;
+		}
+		const jogo = interaction.options.getString("jogo", true).trim();
+		try {
+			// A busca leva segundos: defer primeiro (limite de 3s do Discord).
+			await interaction.deferReply();
+			const { text, hits, displayName, correctedFrom } = await searchSkidrow(jogo);
+			try {
+				this.persist?.({
+					channelId: interaction.channelId,
+					authorId: interaction.user.id,
+					authorName: interaction.user.username,
+					messageId: interaction.id,
+					body: `/lista ${jogo}`,
+				});
+			} catch {
+				/* histórico nunca quebra resposta */
+			}
+			if (hits.length > 0) this.rememberTop(interaction.channelId, hits);
+			if (hits.length > 0) {
+				await interaction.editReply({
+					embeds: [listaEmbed(displayName, hits, correctedFrom)],
+					components: magnetRow(hits.length),
+				});
+			} else {
+				await interaction.editReply(text);
+			}
+		} catch (err) {
+			try {
+				const msg = `não rolou: ${err instanceof Error ? err.message : String(err)}`;
+				if (interaction.deferred) await interaction.editReply(msg);
+				else await interaction.reply({ content: msg, ephemeral: true });
+			} catch {
+				/* resposta nunca quebra o gateway */
+			}
+		}
+	}
+
+	/** Guarda o top 3 do canal p/ os botões 1/2/3 (expira em 15 min). */
+	private rememberTop(channelId: string, hits: SkidrowHit[]): void {
+		const now = Date.now();
+		for (const [id, e] of this.skidrowTop) {
+			if (now - e.at > SKIDROW_TTL_MS) this.skidrowTop.delete(id);
+		}
+		this.skidrowTop.set(channelId, { hits, at: now });
+	}
+
+	/** Botão 1/2/3: busca o magnet da opção no cache do canal. */
+	private async onMagnetButton(interaction: Interaction): Promise<void> {
+		if (!interaction.isButton() || !interaction.customId.startsWith("skr:")) return;
+		const idx = Number(interaction.customId.slice(4));
+		const entry = this.skidrowTop.get(interaction.channelId);
+		const hit = entry && Date.now() - entry.at <= SKIDROW_TTL_MS ? entry.hits[idx] : undefined;
+		if (!hit) {
+			try {
+				await interaction.reply({ content: "lista expirou — rode /lista de novo.", ephemeral: true });
+			} catch {
+				/* resposta efêmera nunca quebra o gateway */
+			}
+			return;
+		}
+		try {
+			await interaction.deferReply();
+			const magnet = await fetchMagnet(hit.url);
+			try {
+				this.persist?.({
+					channelId: interaction.channelId,
+					authorId: interaction.user.id,
+					authorName: interaction.user.username,
+					messageId: interaction.id,
+					body: `magnet ${idx + 1}. ${hit.title}`,
+				});
+			} catch {
+				/* histórico nunca quebra resposta */
+			}
+			await interaction.editReply(`${idx + 1}. ${hit.title}\n${magnet}`);
+		} catch (err) {
+			try {
+				const msg = `não rolou: ${err instanceof Error ? err.message : String(err)}`;
+				if (interaction.deferred) await interaction.editReply(msg);
+				else await interaction.reply({ content: msg, ephemeral: true });
+			} catch {
+				/* resposta nunca quebra o gateway */
+			}
+		}
 	}
 
 	async stop(): Promise<void> {
@@ -207,19 +373,23 @@ export class DiscordGateway {
 		);
 		if (!eligible) return;
 		const m = message as GuildMessage;
+		const images = await downloadImages(collectImageUrls(valuesOf(m.attachments), valuesOf(m.stickers))).catch(
+			() => [] as VisionImage[],
+		);
+		const text = m.content || (images.length > 0 ? "(imagem anexada)" : "");
 		try {
 			this.persist?.({
 				channelId: m.channelId,
 				authorId: m.author.id,
 				authorName: m.author.username,
 				messageId: m.id,
-				body: m.content ?? "",
+				body: `${m.content ?? ""}${images.length > 0 ? " [imagem]" : ""}`.slice(0, 4000),
 				replyTo: m.reference?.messageId,
 			});
 		} catch {
 			/* histórico nunca quebra resposta */
 		}
-		if (m.content.startsWith("!") && !m.author.bot) {
+		if ((m.content.startsWith("!") || m.content.startsWith("/")) && !m.author.bot) {
 			try {
 				const handled = await this.onCommand?.({
 					channelId: m.channelId,
@@ -241,7 +411,8 @@ export class DiscordGateway {
 			message: m,
 			channelId: m.channelId,
 			authorId: m.author.id,
-			text: m.content,
+			text,
+			images,
 		};
 		let queue = this.queues.get(m.channelId);
 		if (!queue) {
@@ -295,7 +466,7 @@ export class DiscordGateway {
 			const role = roleOf(incoming.authorId, settings);
 			this.emit(`resposta canal=${incoming.channelId} role=${role} len=${incoming.text.length}`);
 			const answer = await trackWorking(incoming.message, this.botUserId, () =>
-				this.respond(incoming.channelId, incoming.authorId, incoming.text),
+				this.respond(incoming.channelId, incoming.authorId, incoming.text, incoming.images),
 			);
 			this.emit(`resposta ok canal=${incoming.channelId} len=${answer.length}`);
 			this.lastReply.set(incoming.channelId, Date.now());

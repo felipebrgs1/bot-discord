@@ -138,6 +138,29 @@ describe("ChannelSessions", () => {
 		sessions.dispose();
 	});
 
+	it("repassa images ao prompt da sessão", async () => {
+		const calls: unknown[][] = [];
+		const factory: SessionFactory = {
+			async create() {
+				return {
+					prompt: async (...a: unknown[]) => void calls.push(a),
+					waitForIdle: async () => undefined,
+					getLastAssistantText: () => "x",
+					dispose: () => undefined,
+				} as unknown as import("@earendil-works/pi-coding-agent").AgentSession;
+			},
+			dispose: () => undefined,
+		};
+		const sessions = new ChannelSessions(factory, 60_000);
+		await sessions.ask("c1", "user", "olha", {
+			images: [{ type: "image", data: "AAA", mimeType: "image/png" }],
+		});
+		expect(calls[0]).toEqual(["olha", { images: [{ type: "image", data: "AAA", mimeType: "image/png" }] }]);
+		await sessions.ask("c1", "user", "só texto");
+		expect(calls[1]).toEqual(["só texto", undefined]);
+		sessions.dispose();
+	});
+
 	it("sweeps idle sessions", async () => {
 		const factory = stubFactory();
 		const sessions = new ChannelSessions(factory, 5);

@@ -10,6 +10,18 @@ import { searchHistoryTool } from "./history.ts";
 import { type ToolCtx, toolsFor } from "./index.ts";
 import { downloadMediaTool } from "./media.ts";
 import { guardSSRF, htmlToText } from "./net.ts";
+import {
+	buildSkidrowLink,
+	colorForGame,
+	correctGameName,
+	fetchMagnet,
+	formatSkidrowTop,
+	listaEmbed,
+	listaJogo,
+	listaTool,
+	parseMagnet,
+	parseSkidrowTop,
+} from "./skidrow.ts";
 import { webFetchTool, webSearchTool } from "./web.ts";
 
 const RSS = `<?xml version="1.0"?>
@@ -300,12 +312,151 @@ describe("search_history", () => {
 	});
 });
 
+const SKIDROW_HTML = `<html><body>
+<h2>3 search results for "the sims"</h2>
+<img decoding="async" class="aligncenter" src="https://www.skidrowreloaded.com/wp-content/uploads/sims4.jpg" alt="The Sims 4 v1.2.3" />
+<h2><a href="https://www.skidrowreloaded.com/the-sims-4-v1-2-3/">The Sims 4 v1.2.3</a></h2>
+<h2><a href="https://www.skidrowreloaded.com/the-sims-3-v4-5-6/">The Sims 3 v4.5.6</a></h2>
+<h2><a href="https://www.skidrowreloaded.com/the-sims-2-v7-8-9/">The Sims 2 v7.8.9</a></h2>
+<h2><a href="https://www.skidrowreloaded.com/the-sims-1-v0-1/">The Sims 1 v0.1</a></h2>
+</body></html>`;
+
+describe("lista", () => {
+	it("monta link com + no lugar do espaço", () => {
+		expect(buildSkidrowLink("the sims")).toBe("https://www.skidrowreloaded.com/?s=the+sims&x=15&y=25");
+		expect(buildSkidrowLink("  elden   ring  ")).toBe("https://www.skidrowreloaded.com/?s=elden+ring&x=15&y=25");
+		expect(() => buildSkidrowLink("   ")).toThrow();
+	});
+
+	it("parse pega só h2 com link, top 3, capa pelo alt", () => {
+		const hits = parseSkidrowTop(SKIDROW_HTML);
+		expect(hits).toHaveLength(3);
+		expect(hits[0]).toEqual({
+			title: "The Sims 4 v1.2.3",
+			url: "https://www.skidrowreloaded.com/the-sims-4-v1-2-3/",
+			cover: "https://www.skidrowreloaded.com/wp-content/uploads/sims4.jpg",
+		});
+		expect(hits[2]?.title).toBe("The Sims 2 v7.8.9");
+		expect(hits[1]?.cover).toBeUndefined();
+		expect(parseSkidrowTop("<html><body><h2>0 search results</h2></body></html>")).toEqual([]);
+	});
+
+	it("embed: título curto com emoji, capa grande, 3 fields, footer+timestamp", () => {
+		const embed = listaEmbed("The Sims 4", parseSkidrowTop(SKIDROW_HTML)).toJSON();
+		expect(embed.title).toBe("🎮 The Sims 4");
+		expect(embed.image?.url).toBe("https://www.skidrowreloaded.com/wp-content/uploads/sims4.jpg");
+		expect(embed.thumbnail).toBeUndefined();
+		expect(embed.description).toBeUndefined();
+		expect(embed.fields).toHaveLength(3);
+		expect(embed.fields?.[0]).toMatchObject({
+			name: "1. The Sims 4 v1.2.3",
+			value: "[🔗 Ver página](https://www.skidrowreloaded.com/the-sims-4-v1-2-3/)",
+		});
+		expect(embed.footer?.text).toContain("Top 3");
+		expect(embed.timestamp).toBeTruthy();
+		const fixed = listaEmbed("The Sims 4", parseSkidrowTop(SKIDROW_HTML), "thesims").toJSON();
+		expect(fixed.footer?.text).toContain("thesims → The Sims 4");
+	});
+
+	it("cor lateral varia por jogo e nunca é o cinza padrão", () => {
+		const a = colorForGame("The Sims 4");
+		const b = colorForGame("Forza Horizon 6");
+		expect(a).not.toBe(0x2b2d31);
+		expect(colorForGame("The Sims 4")).toBe(a); // determinística
+		expect(a).not.toBe(b);
+	});
+
+	it("formata numerado; sem hit devolve link da busca", () => {
+		const text = formatSkidrowTop("the sims", parseSkidrowTop(SKIDROW_HTML));
+		expect(text).toContain("1. The Sims 4 v1.2.3\nhttps://www.skidrowreloaded.com/the-sims-4-v1-2-3/");
+		expect(text).toContain("3. The Sims 2");
+		expect(text).not.toContain("The Sims 1");
+		expect(formatSkidrowTop("zzz", [])).toContain("https://www.skidrowreloaded.com/?s=zzz&x=15&y=25");
+	});
+
+	it("corrige nome grudado via Steam quando Skidrow volta vazio", async () => {
+		process.env["AGENT_ALLOW_PRIVATE"] = "1";
+		const fetch = stubFetch([
+			[/\?s=thesims/, { body: "<html><body><h2>0 search results</h2></body></html>" }],
+			[/storesearch/, { body: JSON.stringify({ items: [{ name: "The Sims™ 4" }] }) }],
+			[/skidrowreloaded/, { body: SKIDROW_HTML }],
+		]);
+		vi.stubGlobal("fetch", fetch);
+		expect(await correctGameName("thesims")).toBe("The Sims 4");
+		const text = await listaJogo("thesims");
+		expect(text).toContain("Nome corrigido: thesims → The Sims 4");
+		expect(text).toContain("1. The Sims 4");
+	});
+
+	it("busca direta com acerto não chama o Steam", async () => {
+		process.env["AGENT_ALLOW_PRIVATE"] = "1";
+		const fetch = stubFetch([[/skidrowreloaded/, { body: SKIDROW_HTML }]]);
+		vi.stubGlobal("fetch", fetch);
+		const text = await listaJogo("the sims");
+		expect(text).toContain("1. The Sims 4");
+		expect(text).not.toContain("corrigido");
+		expect(fetch.mock.calls.map((c) => String(c[0])).some((u) => u.includes("storesearch"))).toBe(false);
+	});
+
+	it("parseMagnet pega o primeiro e decodifica &#038;", () => {
+		const html = `<a href="magnet:?xt=urn:btih:ABC&#038;dn=Jogo&#038;tr=udp%3A//t/announce">MAGNET</a>`;
+		expect(parseMagnet(html)).toBe("magnet:?xt=urn:btih:ABC&dn=Jogo&tr=udp%3A//t/announce");
+		expect(parseMagnet("<html><body>sem magnet</body></html>")).toBeNull();
+	});
+
+	it("fetchMagnet baixa post e devolve magnet; sem magnet erra", async () => {
+		process.env["AGENT_ALLOW_PRIVATE"] = "1";
+		vi.stubGlobal(
+			"fetch",
+			stubFetch([
+				[/com-magnet/, { body: `<a href="magnet:?xt=urn:btih:ABC">M</a>` }],
+				[/sem-magnet/, { body: "<html>nada</html>" }],
+			]),
+		);
+		expect(await fetchMagnet("https://skidrow.exemplo/com-magnet/")).toBe("magnet:?xt=urn:btih:ABC");
+		await expect(fetchMagnet("https://skidrow.exemplo/sem-magnet/")).rejects.toThrow("magnet não encontrado");
+		await expect(fetchMagnet("ftp://x/y")).rejects.toThrow("inválida");
+	});
+
+	it("tool lista top 3 com rede mockada", async () => {
+		process.env["AGENT_ALLOW_PRIVATE"] = "1"; // pula DNS/SSRF (host fictício)
+		vi.stubGlobal("fetch", stubFetch([[/skidrowreloaded/, { body: SKIDROW_HTML }]]));
+		const tool = listaTool();
+		expect(tool.name).toBe("lista");
+		const r = await tool.execute(
+			"t",
+			{ jogo: "the sims" } as never,
+			undefined as never,
+			undefined as never,
+			{} as never,
+		);
+		const text = r.content[0]?.type === "text" ? r.content[0].text : "";
+		expect(text).toContain("1. The Sims 4");
+		expect(text).toContain("https://www.skidrowreloaded.com/the-sims-4-v1-2-3/");
+	});
+
+	it("normaliza espaços extras e recusa vazio sem rede", async () => {
+		expect(buildSkidrowLink("  elden   ring  ")).toBe("https://www.skidrowreloaded.com/?s=elden+ring&x=15&y=25");
+		const tool = listaTool();
+		const r = await tool.execute("t", { jogo: "   " } as never, undefined as never, undefined as never, {} as never);
+		expect(r.content[0]?.type === "text" ? r.content[0].text : "").toContain("informe o nome");
+	});
+});
+
 describe("toolsFor", () => {
-	it("user e admin recebem as 5 tools do bot", () => {
+	it("user e admin recebem as 7 tools do bot", () => {
 		const db = memDb();
 		for (const role of ["user", "admin"] as const) {
 			const names = toolsFor(role, ctx("c1", db, "/tmp/x")).map((t) => t.name);
-			expect(names).toEqual(["web_search", "web_fetch", "download_media", "search_history", "memory_search"]);
+			expect(names).toEqual([
+				"web_search",
+				"web_fetch",
+				"download_media",
+				"search_history",
+				"memory_search",
+				"lista",
+				"magnet",
+			]);
 		}
 		db.close();
 	});

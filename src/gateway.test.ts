@@ -25,6 +25,67 @@ function message(over: Record<string, unknown> = {}): Record<string, unknown> {
 	};
 }
 
+describe("onMessage com imagem", () => {
+	it("anexo de imagem chega ao respond como base64", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				status: 200,
+				headers: { get: (h: string) => (h === "content-type" ? "image/png" : null) },
+				arrayBuffer: async () => new TextEncoder().encode("IMG").buffer as ArrayBuffer,
+			})),
+		);
+		try {
+			const seen: { text: string; images?: { data: string; mimeType: string }[] }[] = [];
+			const handlers: Record<string, (m: unknown) => void> = {};
+			const client = {
+				once: () => undefined,
+				on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+				login: async () => undefined,
+				destroy: () => undefined,
+			};
+			const gw = new DiscordGateway(
+				settings,
+				async (_c, _a, text, images) => {
+					seen.push({ text, images });
+					return "vi";
+				},
+				client as never,
+				undefined,
+				() => undefined,
+			);
+			(gw as unknown as { botUserId: string }).botUserId = "bot";
+			await gw.start("tok");
+			const msg = message({
+				id: "m9",
+				content: "",
+				mentions: { users: { size: 1 }, has: () => true },
+				attachments: new Map([["a1", { contentType: "image/png", size: 3, url: "https://cdn/foto.png" }]]),
+				stickers: new Map(),
+				reply: vi.fn(async () => undefined),
+				react: vi.fn(async () => undefined),
+				reactions: { cache: new Map() },
+				channel: {
+					messages: { cache: new Map() },
+					send: vi.fn(async () => undefined),
+					sendTyping: vi.fn(async () => undefined),
+				},
+			});
+			handlers["messageCreate"]?.(msg);
+			await new Promise((r) => setTimeout(r, 100));
+			expect(seen).toHaveLength(1);
+			expect(seen[0]?.text).toBe("(imagem anexada)");
+			expect(seen[0]?.images).toHaveLength(1);
+			expect(seen[0]?.images?.[0]?.mimeType).toBe("image/png");
+			expect(seen[0]?.images?.[0]?.data).toBe(Buffer.from("IMG").toString("base64"));
+			await gw.stop();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
 describe("isEligibleChannel", () => {
 	it("só canal allowlist de guild (DM/bot fora)", () => {
 		expect(isEligibleChannel(message() as never, settings())).toBe(true);
@@ -49,6 +110,228 @@ describe("isTrigger", () => {
 		expect(isTrigger(m as never, "bot")).toBe(true);
 		const m2 = message({ reference: { messageId: "zz" }, channel: { messages: { cache } } });
 		expect(isTrigger(m2 as never, "bot")).toBe(false);
+	});
+});
+
+const stubFetch = (routes: [RegExp, { status?: number; body: string }][]) =>
+	vi.fn(async (url: unknown) => {
+		const u = String(url);
+		for (const [re, r] of routes) {
+			if (re.test(u)) {
+				return {
+					ok: (r.status ?? 200) >= 200 && (r.status ?? 200) < 300,
+					status: r.status ?? 200,
+					arrayBuffer: async () => new TextEncoder().encode(r.body).buffer as ArrayBuffer,
+					json: async () => JSON.parse(r.body),
+				};
+			}
+		}
+		throw new Error(`rota não mockada: ${u}`);
+	});
+
+const SKIDROW_IX_HTML = `<html><body><h2>2 search results</h2>
+<img decoding="async" class="aligncenter" src="https://www.skidrowreloaded.com/wp-content/uploads/fh6.jpg" alt="Forza Horizon 6-RUNE" />
+<h2><a href="https://www.skidrowreloaded.com/forza-horizon-6-rune/">Forza Horizon 6-RUNE</a></h2>
+<h2><a href="https://www.skidrowreloaded.com/forza-horizon-5-p2p/">Forza Horizon 5-P2P</a></h2>
+</body></html>`;
+
+function stubInteraction(over: Record<string, unknown> = {}): Record<string, unknown> {
+	const ix: Record<string, unknown> = {
+		commandName: "lista",
+		isChatInputCommand: () => true,
+		isButton: () => false,
+		customId: "",
+		guildId: "g1",
+		channelId: "c1",
+		id: "i1",
+		user: { id: "u1", username: "ana" },
+		options: { getString: () => "forza horizon" },
+		reply: vi.fn(async () => undefined),
+		deferred: false,
+		...over,
+	};
+	if (!ix.deferReply)
+		ix.deferReply = vi.fn(async () => {
+			ix.deferred = true;
+		});
+	if (!ix.editReply) ix.editReply = vi.fn(async () => undefined);
+	return ix;
+}
+
+describe("onInteraction (/lista)", () => {
+	it("responde top 3, sem LLM", async () => {
+		process.env["AGENT_ALLOW_PRIVATE"] = "1";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				status: 200,
+				arrayBuffer: async () => new TextEncoder().encode(SKIDROW_IX_HTML).buffer as ArrayBuffer,
+			})),
+		);
+		try {
+			const persisted: unknown[] = [];
+			const gw = new DiscordGateway(
+				settings,
+				async () => {
+					throw new Error("LLM não deveria ser chamado");
+				},
+				undefined,
+				undefined,
+				() => undefined,
+				undefined,
+				undefined,
+				(m) => void persisted.push(m),
+			);
+			const ix = stubInteraction();
+			await gw.onInteraction(ix as never);
+			expect(ix.deferReply as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+			const edit = ix.editReply as ReturnType<typeof vi.fn>;
+			expect(edit).toHaveBeenCalledTimes(1);
+			const payload = edit.mock.calls[0]?.[0] as {
+				embeds?: { toJSON(): Record<string, unknown> }[];
+				components?: unknown[];
+			};
+			const embed = payload.embeds?.[0]?.toJSON() as Record<string, unknown>;
+			expect(embed["title"]).toBe("🎮 forza horizon");
+			expect(embed["image"]).toMatchObject({
+				url: "https://www.skidrowreloaded.com/wp-content/uploads/fh6.jpg",
+			});
+			const fields = embed["fields"] as { name: string; value: string }[];
+			expect(fields).toHaveLength(2);
+			expect(fields[0]?.name).toContain("Forza Horizon 6-RUNE");
+			expect(fields[0]?.value).toBe("[🔗 Ver página](https://www.skidrowreloaded.com/forza-horizon-6-rune/)");
+			expect(payload.components).toHaveLength(1);
+			expect(persisted).toHaveLength(1);
+		} finally {
+			vi.unstubAllGlobals();
+			delete process.env["AGENT_ALLOW_PRIVATE"];
+		}
+	});
+
+	it("falha na busca edita com erro", async () => {
+		process.env["AGENT_ALLOW_PRIVATE"] = "1";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new Error("rede caiu");
+			}),
+		);
+		try {
+			const gw = new DiscordGateway(
+				settings,
+				async () => "ok",
+				undefined,
+				undefined,
+				() => undefined,
+			);
+			const ix = stubInteraction();
+			await gw.onInteraction(ix as never);
+			const edit = ix.editReply as ReturnType<typeof vi.fn>;
+			expect(edit).toHaveBeenCalledTimes(1);
+			expect(String(edit.mock.calls[0]?.[0])).toContain("não rolou");
+		} finally {
+			vi.unstubAllGlobals();
+			delete process.env["AGENT_ALLOW_PRIVATE"];
+		}
+	});
+
+	it("botão 1 traz o magnet da opção", async () => {
+		process.env["AGENT_ALLOW_PRIVATE"] = "1";
+		vi.stubGlobal(
+			"fetch",
+			stubFetch([
+				[/forza-horizon-6-rune\/$/, { body: `<a href="magnet:?xt=urn:btih:HASH123">MAGNET</a>` }],
+				[/skidrowreloaded/, { body: SKIDROW_IX_HTML }],
+			]),
+		);
+		try {
+			const gw = new DiscordGateway(
+				settings,
+				async () => "ok",
+				undefined,
+				undefined,
+				() => undefined,
+			);
+			const list = stubInteraction();
+			await gw.onInteraction(list as never);
+			const editList = list.editReply as ReturnType<typeof vi.fn>;
+			const payload = editList.mock.calls[0]?.[0] as {
+				embeds?: { toJSON(): Record<string, unknown> }[];
+				components?: unknown[];
+			};
+			const embed = payload.embeds?.[0]?.toJSON() as Record<string, unknown>;
+			const fields = embed["fields"] as { name: string }[];
+			expect(fields[0]?.name).toContain("Forza Horizon 6-RUNE");
+			expect(payload.components).toHaveLength(1); // botões 1/2
+			const btn = stubInteraction({
+				commandName: undefined,
+				isChatInputCommand: () => false,
+				isButton: () => true,
+				customId: "skr:0",
+				id: "i2",
+				user: { id: "u2", username: "be" },
+			});
+			await gw.onInteraction(btn as never);
+			const editBtn = btn.editReply as ReturnType<typeof vi.fn>;
+			expect(editBtn).toHaveBeenCalledTimes(1);
+			const magnet = String(editBtn.mock.calls[0]?.[0]);
+			expect(magnet).toContain("1. Forza Horizon 6-RUNE");
+			expect(magnet).toContain("magnet:?xt=urn:btih:HASH123");
+		} finally {
+			vi.unstubAllGlobals();
+			delete process.env["AGENT_ALLOW_PRIVATE"];
+		}
+	});
+
+	it("botão sem lista no canal recebe efêmero", async () => {
+		const gw = new DiscordGateway(
+			settings,
+			async () => "ok",
+			undefined,
+			undefined,
+			() => undefined,
+		);
+		const btn = stubInteraction({
+			commandName: undefined,
+			isChatInputCommand: () => false,
+			isButton: () => true,
+			customId: "skr:1",
+		});
+		await gw.onInteraction(btn as never);
+		const reply = btn.reply as ReturnType<typeof vi.fn>;
+		expect(reply).toHaveBeenCalledTimes(1);
+		const arg = reply.mock.calls[0]?.[0] as { ephemeral?: boolean };
+		expect(arg.ephemeral).toBe(true);
+	});
+
+	it("canal fora da allowlist recebe efêmero", async () => {
+		const gw = new DiscordGateway(
+			settings,
+			async () => "ok",
+			undefined,
+			undefined,
+			() => undefined,
+		);
+		const ix = stubInteraction({ channelId: "c9" });
+		await gw.onInteraction(ix as never);
+		const reply = ix.reply as ReturnType<typeof vi.fn>;
+		expect(reply).toHaveBeenCalledTimes(1);
+		const arg = reply.mock.calls[0]?.[0] as { ephemeral?: boolean };
+		expect(arg.ephemeral).toBe(true);
+	});
+
+	it("ignora outro comando", async () => {
+		const gw = new DiscordGateway(
+			settings,
+			async () => "ok",
+			undefined,
+			undefined,
+			() => undefined,
+		);
+		const ix = stubInteraction({ commandName: "outro" });
+		await gw.onInteraction(ix as never);
+		expect(ix.reply as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
 	});
 });
 

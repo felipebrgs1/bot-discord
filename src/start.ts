@@ -19,6 +19,7 @@ const DEFAULT_SOUL_FALLBACK = "Você é um amigo do servidor: direto, bem-humora
 
 import { roleOf } from "./roles.ts";
 import { ChannelSessions, piSessionFactory } from "./sessions.ts";
+import { listaJogo } from "./tools/skidrow.ts";
 import { startDashboard } from "./webapi.ts";
 import { LogBuffer } from "./weblog.ts";
 
@@ -53,7 +54,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 
 	const gateway = new DiscordGateway(
 		() => config.all(),
-		async (channelId, authorId, text) => {
+		async (channelId, authorId, text, images) => {
 			const settings = config.all();
 			const role = roleOf(authorId, settings);
 			const soul = souls.bodyFor(channelId);
@@ -63,6 +64,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 				source: "discord",
 				model: settings.chat.model,
 				systemExtra: systemExtra || undefined,
+				images: images?.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType })),
 				onTurn: (r) => recordTurn(db, r),
 			});
 		},
@@ -70,7 +72,21 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 		(tag) => log.log("info", `logado no Discord como ${tag}`),
 		emit,
 		async ({ channelId, authorId, text, reply }) => {
-			const cmd = text.trim().split(/\s+/);
+			const raw = text.trim();
+			const cmd = raw.split(/\s+/);
+			if (cmd[0] === "!lista" || cmd[0] === "/lista") {
+				const jogo = raw.slice(cmd[0].length).trim();
+				if (!jogo) {
+					await reply("uso: /lista nome do jogo (ex.: /lista the sims)");
+					return true;
+				}
+				try {
+					await reply(await listaJogo(jogo));
+				} catch (err) {
+					await reply(`não rolou: ${err instanceof Error ? err.message : String(err)}`);
+				}
+				return true;
+			}
 			if (cmd[0] !== "!soul" && cmd[0] !== "!souls") return false;
 			if (roleOf(authorId, config.all()) !== "admin") {
 				await reply("só o dono troca a mente do bot.");

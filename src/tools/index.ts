@@ -11,6 +11,7 @@ import type { LogBuffer } from "../weblog.ts";
 import { searchHistoryTool } from "./history.ts";
 import { downloadMediaTool } from "./media.ts";
 import { memorySearchTool } from "./memory.ts";
+import { listaTool, magnetTool } from "./skidrow.ts";
 import { webFetchTool, webSearchTool } from "./web.ts";
 
 /** Resposta de texto simples p/ tools (details vazio). */
@@ -30,5 +31,13 @@ export interface ToolCtx {
 
 /** Tools de user: pesquisa, mídia, histórico. Admin ganha as nativas (roles.ts) + estas. */
 export function toolsFor(_role: Role, ctx: ToolCtx): ToolDefinition[] {
-	return [webSearchTool(), webFetchTool(), downloadMediaTool(ctx), searchHistoryTool(ctx), memorySearchTool(ctx)];
+	return [
+		webSearchTool(),
+		webFetchTool(),
+		downloadMediaTool(ctx),
+		searchHistoryTool(ctx),
+		memorySearchTool(ctx),
+		listaTool(),
+		magnetTool(),
+	];
 }
