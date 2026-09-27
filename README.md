@@ -1,12 +1,15 @@
-# @earendil-works/discord-bot
+# elmatadore-bot
 
-Discord bot built on the pi harness. Phase 0: SQLite storage + config.
-
-- `src/db.ts` — `openDatabase()` + versioned migrations (WAL, FTS5, nullable `embedding` reserved for future sqlite-vec).
-- `src/config.ts` — `ConfigStore` (SQLite-backed, defaults in code, secrets via env only) + hot-reload `subscribe()`.
-- `src/index.ts` — public re-exports.
+Bot de Discord sobre o SDK do pi (`@earendil-works/pi-coding-agent`, versao fixa no `package.json`).
+Extraido de `felipebrgs1/discord-bot` (fork do pi); historico em `docs/historico-fork.md`.
 
 ```bash
-npm run build   # tsc -p tsconfig.build.json
-npm run test    # vitest --run (src/**/*.test.ts)
+pnpm install --ignore-scripts
+pnpm run check   # tsc --noEmit
+pnpm test        # vitest --run
+pnpm start       # node src/run.ts (le .env e data/bot.db na raiz)
 ```
+
+Atualizar o pi: subir `@earendil-works/pi-ai` e `@earendil-works/pi-coding-agent` juntos para a mesma versao, `pnpm install`, `pnpm run check && pnpm test`.
+
+Painel: `web/` (workspace pnpm `discord-bot-web`).

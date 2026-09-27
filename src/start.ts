@@ -34,7 +34,7 @@ export interface StartOptions {
 }
 
 export async function startBot(options: StartOptions): Promise<() => Promise<void>> {
-	// Secrets live in packages/discord-bot/.env (gitignored) — never in SQLite.
+	// Secrets live in .env at the repo root (gitignored) — never in SQLite.
 	loadEnv({ path: join(dirname(fileURLToPath(import.meta.url)), "..", ".env") });
 
 	const log = new LogBuffer();

@@ -1,0 +1,9 @@
+packages:
+  - 'web'
+allowBuilds:
+  esbuild: true
+# pi-ai imports @smithy/types without declaring it (npm hoisting masks it).
+packageExtensions:
+  '@earendil-works/pi-ai':
+    dependencies:
+      '@smithy/types': '4.19.0'
