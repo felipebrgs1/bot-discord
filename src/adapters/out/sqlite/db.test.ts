@@ -1,6 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "bun:test";
-import { ConfigStore, DEFAULTS } from "./config.ts";
 import { migrate, openDatabase, schemaVersion } from "./db.ts";
 
 function memDb(): DatabaseSync {
@@ -76,53 +75,6 @@ describe("memories_fts", () => {
 		}[];
 		expect(hits).toHaveLength(1);
 		expect(hits[0]?.content).toContain("Terraria");
-		db.close();
-	});
-});
-
-describe("ConfigStore", () => {
-	it("serves defaults on an empty database", () => {
-		const db = memDb();
-		const cfg = new ConfigStore(db);
-		expect(cfg.all()).toEqual(DEFAULTS);
-		expect(cfg.get("chat.model")).toBe("");
-		cfg.dispose();
-		db.close();
-	});
-
-	it("persists dotted keys and sections", () => {
-		const db = memDb();
-		const cfg = new ConfigStore(db);
-		cfg.set("chat.model", "gpt-oss-120b");
-		expect(cfg.get("chat.model")).toBe("gpt-oss-120b");
-		cfg.set("discord", { channel_ids: ["c1"] });
-		expect(cfg.all().discord.channel_ids).toEqual(["c1"]);
-		// Defaults for untouched fields survive section overlay.
-		expect(cfg.all().discord.guild_id).toBe("");
-		expect(cfg.updatedAt("chat.model")).not.toBe("");
-		cfg.dispose();
-		db.close();
-	});
-
-	it("dotted keys win over whole-section keys", () => {
-		const db = memDb();
-		const cfg = new ConfigStore(db);
-		cfg.set("discord", { channel_ids: ["c1", "c2"] });
-		cfg.set("discord.channel_ids", ["c2"]);
-		expect(cfg.all().discord.channel_ids).toEqual(["c2"]);
-		cfg.dispose();
-		db.close();
-	});
-
-	it("notifies subscribers on change", async () => {
-		const db = memDb();
-		const cfg = new ConfigStore(db, 20);
-		const seen: string[] = [];
-		const unsub = cfg.subscribe((k) => seen.push(k));
-		cfg.set("bot.personality", "seco e direto");
-		expect(seen).toContain("bot.personality");
-		unsub();
-		cfg.dispose();
 		db.close();
 	});
 });

@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "bun:test";
-import { migrate } from "../db.ts";
+import { migrate } from "../adapters/out/sqlite/db.ts";
 import type { ToolCtx } from "../tools/index.ts";
 import { memorySearchTool } from "../tools/memory.ts";
 import { LogBuffer } from "../weblog.ts";

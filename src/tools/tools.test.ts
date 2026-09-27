@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { replaceFetch, restoreFetch } from "../test-support/stub-fetch.ts";
-import { migrate } from "../db.ts";
+import { migrate } from "../adapters/out/sqlite/db.ts";
 import { discard, outboxDirFor, pendingAttachments } from "../outbox.ts";
 import { LogBuffer } from "../weblog.ts";
 import { searchHistoryTool } from "./history.ts";

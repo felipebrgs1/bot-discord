@@ -1,16 +1,6 @@
-export {
-	type BotConfig,
-	type BotSettings,
-	type ChatConfig,
-	ConfigStore,
-	type DashboardConfig,
-	DEFAULTS,
-	type DiscordConfig,
-	type JudgeConfig,
-	type MemoryConfig,
-	secret,
-} from "./config.ts";
-export { CURRENT_SCHEMA_VERSION, migrate, openDatabase, schemaVersion } from "./db.ts";
+export { SqliteConfigStore } from "./adapters/out/sqlite/config-store.ts";
+export { CURRENT_SCHEMA_VERSION, migrate, openDatabase, schemaVersion } from "./adapters/out/sqlite/db.ts";
+export { type BotSettings, defaultSettings } from "./domain/settings.ts";
 export {
 	type CommandCtx,
 	type CommandHandler,

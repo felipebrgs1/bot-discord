@@ -12,8 +12,8 @@ import { systemClock } from "./adapters/out/clock/system-clock.ts";
 import type { ChatAgent } from "./application/ports/chat-agent.ts";
 import type { Logger } from "./application/ports/logger.ts";
 import { ReplyToMessage } from "./application/reply-to-message.ts";
-import { ConfigStore, secret } from "./config.ts";
-import { openDatabase } from "./db.ts";
+import { SqliteConfigStore } from "./adapters/out/sqlite/config-store.ts";
+import { openDatabase } from "./adapters/out/sqlite/db.ts";
 import { DiscordGateway } from "./gateway.ts";
 import { apiLlmCaller, familiarityBlock, startConsolidation } from "./memory/index.ts";
 import { recordTurn } from "./metrics.ts";
@@ -37,6 +37,9 @@ export interface StartOptions {
 	webDir?: string;
 }
 
+/** Segredo so do ambiente; nunca do banco. */
+const secret = (name: string): string => process.env[name] ?? "";
+
 export async function startBot(options: StartOptions): Promise<() => Promise<void>> {
 	// Secrets live in .env at the repo root (gitignored) — never in SQLite.
 	loadEnv({ path: join(dirname(fileURLToPath(import.meta.url)), "..", ".env") });
@@ -44,7 +47,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 	const log = new LogBuffer();
 	const emit = (msg: string, attrs?: Record<string, unknown>): void => log.log("info", msg, attrs);
 	const db = openDatabase(options.dbPath);
-	const config = new ConfigStore(db);
+	const config = new SqliteConfigStore(db);
 	const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 	const sessions = new ChannelSessions(
 		piSessionFactory(options.cwd ?? process.cwd(), {

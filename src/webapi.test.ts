@@ -2,8 +2,8 @@ import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "bun:test";
-import { ConfigStore } from "./config.ts";
-import { migrate } from "./db.ts";
+import { SqliteConfigStore } from "./adapters/out/sqlite/config-store.ts";
+import { migrate } from "./adapters/out/sqlite/db.ts";
 import { ChannelSessions, type SessionFactory } from "./sessions.ts";
 import { SoulStore } from "./souls.ts";
 import { createWebHandler, type WebDeps } from "./webapi.ts";
@@ -35,7 +35,7 @@ function deps(password = ""): WebDeps & { db: DatabaseSync } {
 	};
 	return {
 		db,
-		config: new ConfigStore(db),
+		config: new SqliteConfigStore(db),
 		sessions: new ChannelSessions(factory),
 		log: new LogBuffer(),
 		webDir: "/nao-existe",
@@ -126,8 +126,7 @@ describe("webapi envelopes (contrato do front)", () => {
 		for (const k of ["summary", "series", "models", "recent", "options"]) {
 			expect((j(metrics) as Record<string, unknown>)[k], k).toBeDefined();
 		}
-		d.config.dispose();
-		d.db.close();
+				d.db.close();
 	});
 });
 
@@ -137,8 +136,7 @@ describe("webapi auth", () => {
 		const hOpen = createWebHandler(open);
 		expect((await request(hOpen, "GET", "/auth/session")).status).toBe(200);
 		expect((await request(hOpen, "GET", "/api/meta")).status).toBe(200);
-		open.config.dispose();
-		open.db.close();
+				open.db.close();
 
 		const pw = `pw-${Date.now()}`;
 		const d = deps(pw);
@@ -154,8 +152,7 @@ describe("webapi auth", () => {
 		const out = await request(h, "POST", "/auth/logout", { cookie });
 		expect(out.status).toBe(200);
 		expect((await request(h, "GET", "/api/meta", { cookie })).status).toBe(401);
-		d.config.dispose();
-		d.db.close();
+				d.db.close();
 	});
 });
 
@@ -191,8 +188,7 @@ describe("webapi chat", () => {
 			sessions: unknown[];
 		};
 		expect(list2.sessions).toHaveLength(0);
-		d.config.dispose();
-		d.db.close();
+				d.db.close();
 	});
 
 	it("rejeita sessão inválida e mensagem vazia", async () => {
@@ -204,8 +200,7 @@ describe("webapi chat", () => {
 		expect((await request(h, "POST", "/api/chat/sessions/s1/messages", { body: { content: "  " } })).status).toBe(
 			400,
 		);
-		d.config.dispose();
-		d.db.close();
+				d.db.close();
 	});
 });
 
@@ -254,8 +249,7 @@ describe("webapi memories", () => {
 		};
 		expect(list3.items[0]?.content).toBe("Stardew Valley");
 		expect(list3.items[0]?.version).toBe(3);
-		d.config.dispose();
-		d.db.close();
+				d.db.close();
 	});
 
 	it("404 em memória inexistente; PUT vazio é 400", async () => {
@@ -268,8 +262,7 @@ describe("webapi memories", () => {
 			.run("k", "fact", "group", "", "", "c");
 		const id = (d.db.prepare("SELECT rowid AS id FROM memories;").get() as { id: number }).id;
 		expect((await request(h, "PUT", `/api/memories/${id}`, { body: { content: "  " } })).status).toBe(400);
-		d.config.dispose();
-		d.db.close();
+				d.db.close();
 	});
 });
 
@@ -298,8 +291,7 @@ describe("webapi config", () => {
 			web_user_id: "a9",
 			personality: "mente nova",
 		});
-		d.config.dispose();
-		d.db.close();
+				d.db.close();
 	});
 
 	it("model: GET mostra atual, PUT troca", async () => {
@@ -310,8 +302,7 @@ describe("webapi config", () => {
 		const cat = (await request(h, "GET", "/api/models").then((r) => j(r))) as { model: string; models: unknown[] };
 		expect(cat.model).toBe("x-model");
 		expect(Array.isArray(cat.models)).toBe(true);
-		d.config.dispose();
-		d.db.close();
+				d.db.close();
 	});
 });
 
@@ -324,7 +315,6 @@ describe("webapi static", () => {
 		expect(home.body).toContain("Painel sem build");
 		expect((await request(h, "GET", "/%2e%2e%2fpackage.json")).status).toBe(403);
 		expect((await request(h, "GET", "/api/rota-xyz")).status).toBe(404);
-		d.config.dispose();
-		d.db.close();
+				d.db.close();
 	});
 });

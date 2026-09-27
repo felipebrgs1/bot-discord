@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "bun:test";
-import { migrate, schemaVersion } from "./db.ts";
+import { migrate, schemaVersion } from "./adapters/out/sqlite/db.ts";
 import { DEFAULT_SOUL, SoulStore } from "./souls.ts";
 
 function memDb(): DatabaseSync {

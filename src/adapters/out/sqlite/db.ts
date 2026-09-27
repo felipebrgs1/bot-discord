@@ -1,5 +1,5 @@
 /**
- * SQLite storage for discord-bot (Fase 0).
+ * Conexao SQLite + migrations (append-only, versionadas).
  *
  * Single file via node:sqlite (no driver dep, no Docker, no pgvector).
  * Tables mirror the botdiscord (Go) vocabulary minus the vector parts:

@@ -4,16 +4,16 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "bun:test";
 import { replaceFetch, restoreFetch } from "./test-support/stub-fetch.ts";
 import { FakeClock } from "./test-support/fakes/clock.ts";
-import { DEFAULTS } from "./config.ts";
+import { defaultSettings } from "./domain/settings.ts";
 import { ReplyToMessage } from "./application/reply-to-message.ts";
 import type { ImageData } from "./domain/image.ts";
 import { DiscordGateway, discordReplyTarget, type GatewayOptions, isEligibleChannel, isTrigger } from "./gateway.ts";
 import { FakeLogger } from "./test-support/fakes/logger.ts";
 
 const settings = () => ({
-	...DEFAULTS,
+	...defaultSettings(),
 	discord: { guild_id: "g1", channel_ids: ["c1"], admin_ids: [] },
-	bot: { ...DEFAULTS.bot, reply_cooldown_ms: 0 },
+	bot: { ...defaultSettings().bot, reply_cooldown_ms: 0 },
 });
 
 type Respond = (channelId: string, authorId: string, text: string, images: ImageData[]) => Promise<string>;

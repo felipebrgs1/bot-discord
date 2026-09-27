@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join, normalize, sep } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import type { ConfigStore } from "./config.ts";
+import type { ConfigStore } from "./application/ports/config-store.ts";
 import { familiarityBlock } from "./memory/index.ts";
 import { recordTurn } from "./metrics.ts";
 import { roleOf } from "./domain/roles.ts";

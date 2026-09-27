@@ -18,7 +18,7 @@ import {
 } from "discord.js";
 import type { Clock } from "./application/ports/clock.ts";
 import { systemClock } from "./adapters/out/clock/system-clock.ts";
-import type { BotSettings } from "./config.ts";
+import type { BotSettings } from "./domain/settings.ts";
 import type { ReplyTarget, ReplyToMessage } from "./application/reply-to-message.ts";
 import { discard, pendingAttachments } from "./outbox.ts";
 import { type ChannelAccess, isAllowedChannel, shouldReply } from "./domain/trigger.ts";
