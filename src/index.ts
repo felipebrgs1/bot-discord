@@ -23,9 +23,10 @@ export {
 } from "./gateway.ts";
 export { recordTurn, statsOf, type TurnReport } from "./metrics.ts";
 export { discard, outboxDirFor, pendingAttachments } from "./outbox.ts";
-export { excludedToolsFor, type Role, roleOf } from "./roles.ts";
+export { canUseHostTools, type Role, roleOf } from "./domain/roles.ts";
 export {
 	ChannelSessions,
+	excludedToolsFor,
 	piSessionFactory,
 	type SessionFactory,
 } from "./sessions.ts";

@@ -6,7 +6,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { Role } from "../roles.ts";
+import type { Role } from "../domain/roles.ts";
 import type { LogBuffer } from "../weblog.ts";
 import { searchHistoryTool } from "./history.ts";
 import { downloadMediaTool } from "./media.ts";

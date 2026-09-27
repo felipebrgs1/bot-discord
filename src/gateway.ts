@@ -20,7 +20,7 @@ import {
 } from "discord.js";
 import type { BotSettings } from "./config.ts";
 import { discard, pendingAttachments } from "./outbox.ts";
-import { roleOf } from "./roles.ts";
+import { roleOf } from "./domain/roles.ts";
 import { splitMessage } from "./domain/reply-split.ts";
 import { fetchMagnet, LISTA_COMMAND_JSON, listaEmbed, type SkidrowHit, searchSkidrow } from "./tools/skidrow.ts";
 import { collectImageUrls, downloadImages, MAX_VISION_IMAGES, type VisionImage } from "./vision.ts";
@@ -586,7 +586,7 @@ export class DiscordGateway {
 			await new Promise((r) => setTimeout(r, cooldown - elapsed));
 		}
 		try {
-			const role = roleOf(incoming.authorId, settings);
+			const role = roleOf(incoming.authorId, settings.discord.admin_ids);
 			this.emit(`resposta canal=${incoming.channelId} role=${role} len=${incoming.text.length}`);
 			const answer = await trackWorking(incoming.message, this.botUserId, () =>
 				this.respond(incoming.channelId, incoming.authorId, incoming.text, incoming.images),

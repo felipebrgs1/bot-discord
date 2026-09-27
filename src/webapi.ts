@@ -14,7 +14,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { ConfigStore } from "./config.ts";
 import { familiarityBlock } from "./memory/index.ts";
 import { recordTurn } from "./metrics.ts";
-import { roleOf } from "./roles.ts";
+import { roleOf } from "./domain/roles.ts";
 import type { ChannelSessions } from "./sessions.ts";
 import { DEFAULT_SOUL, type SoulStore } from "./souls.ts";
 import type { LogBuffer } from "./weblog.ts";
@@ -208,7 +208,7 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 				chat: true,
 				agent: true,
 				model: settings.chat.model || "(padrão do pi)",
-				role: roleOf(webUser, settings),
+				role: roleOf(webUser, settings.discord.admin_ids),
 			});
 		}
 
@@ -596,7 +596,7 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 			sse(res, "accepted", { message: toChatMessage(userMsg) });
 
 			const settings = config.all();
-			const role = roleOf(settings.dashboard.web_user_id, settings);
+			const role = roleOf(settings.dashboard.web_user_id, settings.discord.admin_ids);
 			const steps: { tool: string; args: string; output: string; duration_ms: number }[] = [];
 			const started = new Map<string, { tool: string; args: string; at: number }>();
 			const session = await sessions.get(key, role);

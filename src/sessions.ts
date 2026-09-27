@@ -15,8 +15,20 @@ import {
 	SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { type StatsTotals, statsOf, type TurnReport } from "./metrics.ts";
-import { excludedToolsFor, type Role } from "./roles.ts";
+import { canUseHostTools, type Role } from "./domain/roles.ts";
 import { type ToolCtx, toolsFor } from "./tools/index.ts";
+
+/** Tools nativas do pi que mexem na maquina do bot. Custom tools do bot sao user-safe. */
+const PI_HOST_TOOLS = ["bash", "powershell", "edit", "write", "read", "grep", "find", "ls"];
+
+/**
+ * Deny-list p/ createAgentSession. A negacao vale na criacao da sessao: se o
+ * papel muda, a sessao e recriada (chave canal+papel). Nao ha segundo nivel
+ * de enforcement na execucao; sessao de user simplesmente nao recebe a tool.
+ */
+export function excludedToolsFor(role: Role): string[] {
+	return canUseHostTools(role) ? [] : [...PI_HOST_TOOLS];
+}
 
 export interface SessionFactory {
 	create(channelId: string, role: Role, systemExtra?: string): Promise<AgentSession>;

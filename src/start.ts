@@ -17,7 +17,7 @@ import { SoulStore } from "./souls.ts";
 
 const DEFAULT_SOUL_FALLBACK = "Você é um amigo do servidor: direto, bem-humorado, fala PT-BR.";
 
-import { roleOf } from "./roles.ts";
+import { roleOf } from "./domain/roles.ts";
 import { ChannelSessions, piSessionFactory } from "./sessions.ts";
 import { listaJogo } from "./tools/skidrow.ts";
 import { startDashboard } from "./webapi.ts";
@@ -56,7 +56,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 		() => config.all(),
 		async (channelId, authorId, text, images) => {
 			const settings = config.all();
-			const role = roleOf(authorId, settings);
+			const role = roleOf(authorId, settings.discord.admin_ids);
 			const soul = souls.bodyFor(channelId);
 			const familiar = familiarityBlock(db, { personId: authorId, channelId });
 			const systemExtra = [soul, familiar].filter(Boolean).join("\n\n");
@@ -88,7 +88,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 				return true;
 			}
 			if (cmd[0] !== "!soul" && cmd[0] !== "!souls") return false;
-			if (roleOf(authorId, config.all()) !== "admin") {
+			if (roleOf(authorId, config.all().discord.admin_ids) !== "admin") {
 				await reply("só o dono troca a mente do bot.");
 				return true;
 			}

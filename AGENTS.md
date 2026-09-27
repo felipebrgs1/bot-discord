@@ -116,8 +116,8 @@ Destino previsto:
 
 | Atual | Destino |
 |---|---|
-| `split.ts` | `domain/reply-split.ts` |
-| `roles.ts` | `domain/roles.ts` (politica) |
+| ~~`split.ts`~~ | `domain/reply-split.ts` (feito) |
+| ~~`roles.ts`~~ | `domain/roles.ts` (feito; nomes de tools do pi ficaram em `sessions.ts`) |
 | `gateway.ts` | `domain` (gatilho, cooldown) + `application/handle-message.ts` + `adapters/in/discord/` |
 | `vision.ts` | `adapters/in/discord/attachments.ts` |
 | `sessions.ts` | `adapters/out/pi-agent/` (implementa `ChatAgent`) |

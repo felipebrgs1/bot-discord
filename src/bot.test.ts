@@ -1,21 +1,6 @@
 import { describe, expect, it, vi } from "bun:test";
-import { DEFAULTS } from "./config.ts";
 import { trackWorking } from "./gateway.ts";
-import { excludedToolsFor, roleOf } from "./roles.ts";
-import { ChannelSessions, type SessionFactory } from "./sessions.ts";
-
-describe("roleOf", () => {
-	it("admin ids sao admin, resto (incl. ex-mods) e user", () => {
-		const settings = {
-			...DEFAULTS,
-			discord: { guild_id: "g", channel_ids: [], admin_ids: ["a"] },
-		};
-		expect(roleOf("a", settings)).toBe("admin");
-		expect(roleOf("m", settings)).toBe("user");
-		expect(roleOf("x", settings)).toBe("user");
-		expect(roleOf("", settings)).toBe("user");
-	});
-});
+import { ChannelSessions, excludedToolsFor, type SessionFactory } from "./sessions.ts";
 
 describe("excludedToolsFor", () => {
 	it("admin ve tudo; user nao encosta em shell nem arquivo", () => {
