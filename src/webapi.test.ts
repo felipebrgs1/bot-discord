@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "bun:test";
 import { SqliteConfigStore } from "./adapters/out/sqlite/config-store.ts";
 import { migrate } from "./adapters/out/sqlite/db.ts";
 import { ChannelSessions, type SessionFactory } from "./sessions.ts";
-import { SoulStore } from "./souls.ts";
+import { SqliteSoulStore } from "./adapters/out/sqlite/soul-store.ts";
 import { createWebHandler, type WebDeps } from "./webapi.ts";
 import { LogBuffer } from "./weblog.ts";
 
@@ -40,7 +40,7 @@ function deps(password = ""): WebDeps & { db: DatabaseSync } {
 		log: new LogBuffer(),
 		webDir: "/nao-existe",
 		password,
-		souls: new SoulStore(db),
+		souls: new SqliteSoulStore(db),
 	};
 }
 

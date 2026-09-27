@@ -17,7 +17,7 @@ import { openDatabase } from "./adapters/out/sqlite/db.ts";
 import { DiscordGateway } from "./gateway.ts";
 import { apiLlmCaller, familiarityBlock, startConsolidation } from "./memory/index.ts";
 import { recordTurn } from "./metrics.ts";
-import { SoulStore } from "./souls.ts";
+import { SqliteSoulStore } from "./adapters/out/sqlite/soul-store.ts";
 
 const DEFAULT_SOUL_FALLBACK = "Você é um amigo do servidor: direto, bem-humorado, fala PT-BR.";
 
@@ -56,7 +56,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 			outboxDir: join(root, "outbox"),
 		}),
 	);
-	const souls = new SoulStore(db);
+	const souls = new SqliteSoulStore(db);
 	souls.ensureSeed(config.all().bot.personality || DEFAULT_SOUL_FALLBACK);
 
 	// ChatAgent provisorio: sessoes do pi + soul + familiaridade (vira adapter pi-agent).

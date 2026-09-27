@@ -16,7 +16,8 @@ import { familiarityBlock } from "./memory/index.ts";
 import { recordTurn } from "./metrics.ts";
 import { roleOf } from "./domain/roles.ts";
 import type { ChannelSessions } from "./sessions.ts";
-import { DEFAULT_SOUL, type SoulStore } from "./souls.ts";
+import type { SoulStore } from "./application/ports/soul-store.ts";
+import { DEFAULT_SOUL } from "./domain/soul.ts";
 import type { LogBuffer } from "./weblog.ts";
 
 export interface WebDeps {

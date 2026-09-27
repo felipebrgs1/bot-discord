@@ -21,7 +21,8 @@ export {
 	piSessionFactory,
 	type SessionFactory,
 } from "./sessions.ts";
-export { DEFAULT_SOUL, type Soul, SoulStore } from "./souls.ts";
+export { SqliteSoulStore } from "./adapters/out/sqlite/soul-store.ts";
+export { DEFAULT_SOUL, type Soul } from "./domain/soul.ts";
 export { DISCORD_MAX_LENGTH, splitMessage } from "./domain/reply-split.ts";
 export { type StartOptions, startBot } from "./start.ts";
 export { type ToolCtx, textResult, toolsFor } from "./tools/index.ts";
