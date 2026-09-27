@@ -1,4 +1,4 @@
-/** Split long replies into Discord-safe chunks (Fase 1). */
+/** Quebra respostas longas em pedacos que cabem numa mensagem do Discord. */
 
 export const DISCORD_MAX_LENGTH = 2000;
 

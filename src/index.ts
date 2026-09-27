@@ -30,7 +30,7 @@ export {
 	type SessionFactory,
 } from "./sessions.ts";
 export { DEFAULT_SOUL, type Soul, SoulStore } from "./souls.ts";
-export { DISCORD_MAX_LENGTH, splitMessage } from "./split.ts";
+export { DISCORD_MAX_LENGTH, splitMessage } from "./domain/reply-split.ts";
 export { type StartOptions, startBot } from "./start.ts";
 export { type ToolCtx, textResult, toolsFor } from "./tools/index.ts";
 export { createWebHandler, startDashboard, type WebDeps } from "./webapi.ts";

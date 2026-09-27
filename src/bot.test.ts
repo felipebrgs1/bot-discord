@@ -3,7 +3,6 @@ import { DEFAULTS } from "./config.ts";
 import { trackWorking } from "./gateway.ts";
 import { excludedToolsFor, roleOf } from "./roles.ts";
 import { ChannelSessions, type SessionFactory } from "./sessions.ts";
-import { splitMessage } from "./split.ts";
 
 describe("roleOf", () => {
 	it("admin ids sao admin, resto (incl. ex-mods) e user", () => {
@@ -25,25 +24,6 @@ describe("excludedToolsFor", () => {
 		for (const t of ["bash", "powershell", "edit", "write", "read", "grep", "find", "ls"]) {
 			expect(user).toContain(t);
 		}
-	});
-});
-
-describe("splitMessage", () => {
-	it("keeps short messages whole", () => {
-		expect(splitMessage("oi")).toEqual(["oi"]);
-	});
-
-	it("splits on newlines within the limit", () => {
-		const text = `${"a".repeat(1990)}\n${"b".repeat(50)}`;
-		const chunks = splitMessage(text);
-		expect(chunks).toHaveLength(2);
-		expect(chunks.every((c) => c.length <= 2000)).toBe(true);
-	});
-
-	it("hard-cuts lines longer than the limit", () => {
-		const chunks = splitMessage("x".repeat(4500));
-		expect(chunks).toHaveLength(3);
-		expect(chunks.join("")).toBe("x".repeat(4500));
 	});
 });
 

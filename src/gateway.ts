@@ -21,7 +21,7 @@ import {
 import type { BotSettings } from "./config.ts";
 import { discard, pendingAttachments } from "./outbox.ts";
 import { roleOf } from "./roles.ts";
-import { splitMessage } from "./split.ts";
+import { splitMessage } from "./domain/reply-split.ts";
 import { fetchMagnet, LISTA_COMMAND_JSON, listaEmbed, type SkidrowHit, searchSkidrow } from "./tools/skidrow.ts";
 import { collectImageUrls, downloadImages, MAX_VISION_IMAGES, type VisionImage } from "./vision.ts";
 
