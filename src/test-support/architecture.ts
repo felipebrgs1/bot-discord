@@ -1,6 +1,7 @@
 /**
  * Regra de dependencia da arquitetura hexagonal (ver AGENTS.md):
- * main -> adapters -> application -> domain. Caminhos relativos a src/.
+ * main -> adapters -> application -> domain. Caminhos relativos a src/;
+ * todo arquivo precisa estar numa camada.
  */
 
 export interface SourceFile {
@@ -63,7 +64,7 @@ function checkExternal(layer: Layer, path: string, specifier: string): string | 
 
 function checkInternal(layer: Layer, path: string, target: string): string | undefined {
 	const targetLayer = layerOf(target);
-	if (targetLayer === undefined) return `${layer} nao importa codigo legado`;
+	if (targetLayer === undefined) return `${layer} importa arquivo fora das camadas`;
 	if (targetLayer === "test-support") {
 		return isTestCode(path) || layer === "test-support" ? undefined : "so codigo de teste importa test-support";
 	}
@@ -78,7 +79,10 @@ export function findViolations(files: SourceFile[]): Violation[] {
 	const violations: Violation[] = [];
 	for (const { path, source } of files) {
 		const layer = layerOf(path);
-		if (layer === undefined) continue;
+		if (layer === undefined) {
+			violations.push({ file: path, specifier: "", rule: "arquivo fora das camadas" });
+			continue;
+		}
 		for (const specifier of importsOf(source)) {
 			const rule = specifier.startsWith(".")
 				? checkInternal(layer, path, resolve(path, specifier))

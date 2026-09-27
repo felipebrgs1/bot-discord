@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { findViolations, importsOf, type SourceFile } from "./test-support/architecture.ts";
+import { findViolations, importsOf, type SourceFile } from "./architecture.ts";
 
 const file = (path: string, ...specifiers: string[]): SourceFile => ({
 	path,
@@ -131,15 +131,22 @@ describe("findViolations: test-support e main", () => {
 	});
 });
 
-describe("findViolations: codigo legado", () => {
-	it("ignora arquivos fora das camadas", () => {
-		expect(specifiersOf([file("gateway.ts", "discord.js", "./db.ts"), file("tools/web.ts", "../net.ts")])).toEqual([]);
+describe("findViolations: fora das camadas", () => {
+	it("arquivo fora de domain/application/adapters/main/test-support e violacao", () => {
+		expect(findViolations([file("gateway.ts", "discord.js"), file("tools/web.ts")])).toEqual([
+			{ file: "gateway.ts", specifier: "", rule: "arquivo fora das camadas" },
+			{ file: "tools/web.ts", specifier: "", rule: "arquivo fora das camadas" },
+		]);
+	});
+
+	it("import que sai das camadas e violacao", () => {
+		expect(specifiersOf([file("domain/a.ts", "../legado.ts")])).toEqual(["domain/a.ts -> ../legado.ts"]);
 	});
 });
 
 describe("repo", () => {
 	it("src respeita a regra de dependencia", async () => {
-		const root = import.meta.dir;
+		const root = join(import.meta.dir, "..");
 		const entries = await readdir(root, { recursive: true });
 		const files: SourceFile[] = [];
 		for (const entry of entries) {
