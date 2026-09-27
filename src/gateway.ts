@@ -1,10 +1,8 @@
 /**
  * Discord gateway (Fase 1): events → sessions → replies.
  *
- * Same trigger rules as the Go bot:
- * - only allowlisted guild text channels (DMs, bots and webhooks ignored)
- * - reply when mentioned or when replying to one of our messages
- * - per-channel cooldown, FIFO queue of 8 pending replies
+ * Regras de gatilho em domain/trigger.ts; aqui so a traducao do discord.js.
+ * Cooldown por canal, fila FIFO de 8 respostas pendentes.
  */
 
 import {
@@ -22,6 +20,7 @@ import type { BotSettings } from "./config.ts";
 import { discard, pendingAttachments } from "./outbox.ts";
 import { roleOf } from "./domain/roles.ts";
 import { splitMessage } from "./domain/reply-split.ts";
+import { type ChannelAccess, isAllowedChannel, shouldReply } from "./domain/trigger.ts";
 import { fetchMagnet, LISTA_COMMAND_JSON, listaEmbed, type SkidrowHit, searchSkidrow } from "./tools/skidrow.ts";
 import { collectImageUrls, downloadImages, MAX_VISION_IMAGES, type VisionImage } from "./vision.ts";
 
@@ -146,24 +145,23 @@ interface Incoming {
 	images: VisionImage[];
 }
 
+function channelAccess(settings: BotSettings): ChannelAccess {
+	return { guildId: settings.discord.guild_id, channelIds: settings.discord.channel_ids };
+}
+
 export function isEligibleChannel(message: Message, settings: BotSettings): boolean {
-	if (message.guildId == null) return false; // DMs ignored (like the Go bot)
-	if (message.guildId !== settings.discord.guild_id && settings.discord.guild_id !== "") {
-		return false;
-	}
-	return settings.discord.channel_ids.includes(message.channelId);
+	return isAllowedChannel({ guildId: message.guildId, channelId: message.channelId }, channelAccess(settings));
 }
 
 export function isTrigger(message: GuildMessage, botUserId: string): boolean {
-	if (message.author.bot || message.author.system) return false;
-	if (message.webhookId) return false;
-	if (message.mentions.has(botUserId)) return true;
-	const ref = message.reference;
-	if (ref?.messageId) {
-		const replied = message.channel.messages.cache.get(ref.messageId);
-		if (replied?.author.id === botUserId) return true;
-	}
-	return false;
+	const refId = message.reference?.messageId;
+	return shouldReply({
+		fromBot: message.author.bot,
+		fromSystem: message.author.system,
+		viaWebhook: Boolean(message.webhookId),
+		mentionsBot: message.mentions.has(botUserId),
+		repliesToBot: refId ? message.channel.messages.cache.get(refId)?.author.id === botUserId : false,
+	});
 }
 
 const MAX_QUEUE = 8;
@@ -348,9 +346,8 @@ export class DiscordGateway {
 			return;
 		}
 		if (!interaction.isChatInputCommand() || interaction.commandName !== "lista") return;
-		const settings = this.getSettings();
-		const sameGuild = settings.discord.guild_id === "" || interaction.guildId === settings.discord.guild_id;
-		if (!sameGuild || !settings.discord.channel_ids.includes(interaction.channelId)) {
+		const place = { guildId: interaction.guildId, channelId: interaction.channelId };
+		if (!isAllowedChannel(place, channelAccess(this.getSettings()))) {
 			try {
 				await interaction.reply({ content: "comando indisponível neste canal.", ephemeral: true });
 			} catch {

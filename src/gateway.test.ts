@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "bun:test";
@@ -529,6 +529,23 @@ describe("onInteraction (/lista)", () => {
 		expect(arg.ephemeral).toBe(true);
 	});
 
+	it("DM recebe efêmero mesmo com guild livre na config", async () => {
+		replaceFetch(async () => {
+			throw new Error("não deveria buscar");
+		});
+		try {
+			const openGuild = () => ({ ...settings(), discord: { guild_id: "", channel_ids: ["c1"], admin_ids: [] } });
+			const gw = new DiscordGateway(openGuild, async () => "ok", undefined, undefined, () => undefined);
+			const ix = stubInteraction({ guildId: null });
+			await gw.onInteraction(ix as never);
+			expect(ix.deferReply).not.toHaveBeenCalled();
+			const arg = ix.reply.mock.calls[0]?.[0] as { ephemeral?: boolean };
+			expect(arg.ephemeral).toBe(true);
+		} finally {
+			restoreFetch();
+		}
+	});
+
 	it("ignora outro comando", async () => {
 		const gw = new DiscordGateway(
 			settings,
@@ -560,7 +577,6 @@ describe("replyOne (integração com stubs)", () => {
 	it("responde texto + drena anexo do outbox e apaga", async () => {
 		const base = await mkdtemp(join(tmpdir(), "gw-"));
 		const dir = join(base, "c1");
-		const { mkdir } = await import("node:fs/promises");
 		await mkdir(dir, { recursive: true });
 		await writeFile(join(dir, "v.mp4"), "dados");
 		try {
@@ -587,7 +603,6 @@ describe("replyOne (integração com stubs)", () => {
 				| { files: { attachment: string }[] }
 				| undefined;
 			expect(fileSend?.files[0]?.attachment).toContain("v.mp4");
-			const { stat } = await import("node:fs/promises");
 			await expect(stat(join(dir, "v.mp4"))).rejects.toThrow(); // apagou
 		} finally {
 			await rm(base, { recursive: true, force: true });
