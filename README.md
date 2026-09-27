@@ -4,12 +4,14 @@ Bot de Discord sobre o SDK do pi (`@earendil-works/pi-coding-agent`, versao fixa
 Extraido de `felipebrgs1/discord-bot` (fork do pi); historico em `docs/historico-fork.md`.
 
 ```bash
-pnpm install --ignore-scripts
-pnpm run check   # tsc --noEmit
-pnpm test        # vitest --run
-pnpm start       # node src/run.ts (le .env e data/bot.db na raiz)
+bun install
+bun run check    # tsc --noEmit
+bun test         # bun:test em src/
+bun start        # bun src/run.ts (le .env e data/bot.db na raiz)
 ```
 
-Atualizar o pi: subir `@earendil-works/pi-ai` e `@earendil-works/pi-coding-agent` juntos para a mesma versao, `pnpm install`, `pnpm run check && pnpm test`.
+Atualizar o pi: subir `@earendil-works/pi-ai` e `@earendil-works/pi-coding-agent` juntos para a mesma versao, `bun install`, `bun run check && bun test`.
 
-Painel: `web/` (workspace pnpm `discord-bot-web`).
+Painel: `web/` (workspace `discord-bot-web`, vitest: `bun run --cwd web test`).
+
+Arquitetura e regras de trabalho: `AGENTS.md`.

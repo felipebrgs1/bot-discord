@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Run the Discord bot: `node dist/run.js`.
+ * Run the Discord bot: `bun src/run.ts`.
  * DB path via BOT_DB env (default: ./data/bot.db next to the package).
  */
 import { dirname, join } from "node:path";

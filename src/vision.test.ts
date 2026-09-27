@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "bun:test";
+import { replaceFetch, restoreFetch } from "./test-support/stub-fetch.ts";
 import { collectImageUrls, downloadImages, MAX_VISION_IMAGES } from "./vision.ts";
 
 afterEach(() => {
-	vi.unstubAllGlobals();
+	restoreFetch();
 });
 
 const img = (url: string, contentType?: string | null) => ({ url, contentType });
@@ -37,16 +38,14 @@ describe("downloadImages", () => {
 		}));
 
 	it("baixa e vira base64 com mime", async () => {
-		vi.stubGlobal("fetch", stub("image/png", 10));
+		replaceFetch(stub("image/png", 10));
 		const [got] = await downloadImages(["https://cdn/a.png"]);
 		expect(got?.mimeType).toBe("image/png");
 		expect(got?.data).toBe(Buffer.from(new Uint8Array(10)).toString("base64"));
 	});
 
 	it("descarta não-imagem, gigante e erro", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (url: unknown) => {
+		replaceFetch(vi.fn(async (url: unknown) => {
 				const u = String(url);
 				if (u.includes("html"))
 					return {

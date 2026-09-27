@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "bun:test";
 import { DEFAULTS } from "./config.ts";
 import { trackWorking } from "./gateway.ts";
 import { excludedToolsFor, roleOf } from "./roles.ts";

@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "bun:test";
+import { replaceFetch, restoreFetch } from "../test-support/stub-fetch.ts";
 import { migrate } from "../db.ts";
 import { discard, outboxDirFor, pendingAttachments } from "../outbox.ts";
 import { LogBuffer } from "../weblog.ts";
@@ -47,7 +48,7 @@ const stubFetch = (routes: [RegExp, { status?: number; body: string }][]) =>
 	});
 
 afterEach(() => {
-	vi.unstubAllGlobals();
+	restoreFetch();
 	delete process.env["AGENT_ALLOW_PRIVATE"];
 	delete process.env["YTDLP_BIN"];
 });
@@ -64,7 +65,7 @@ function ctx(channelId: string, db: DatabaseSync, outboxDir: string): ToolCtx {
 
 describe("web_search", () => {
 	it("formata RSS com fonte e data", async () => {
-		vi.stubGlobal("fetch", stubFetch([[/news\.google/, { body: RSS }]]));
+		replaceFetch(stubFetch([[/news\.google/, { body: RSS }]]));
 		const tool = webSearchTool();
 		const r = await tool.execute(
 			"t",
@@ -85,7 +86,7 @@ describe("web_search", () => {
 		const fetch = vi.fn(async () => {
 			throw new Error("não deveria chamar rede");
 		});
-		vi.stubGlobal("fetch", fetch);
+		replaceFetch(fetch);
 		const tool = webSearchTool();
 		const r = await tool.execute("t", { query: "  " } as never, undefined as never, undefined as never, {} as never);
 		expect(r.content[0]?.type === "text" ? r.content[0].text : "").toContain("vazia");
@@ -93,9 +94,7 @@ describe("web_search", () => {
 	});
 
 	it("cai para wiki+instant quando o RSS vem vazio", async () => {
-		vi.stubGlobal(
-			"fetch",
-			stubFetch([
+		replaceFetch(stubFetch([
 				[/news\.google/, { body: "<rss><channel></channel></rss>" }],
 				[/wikipedia.*list=search/, { body: JSON.stringify({ query: { search: [{ title: "Vasco" }] } }) }],
 				[
@@ -132,9 +131,7 @@ describe("web_search", () => {
 describe("web_fetch", () => {
 	it("extrai título e texto, descarta script e linha curta", async () => {
 		process.env["AGENT_ALLOW_PRIVATE"] = "1"; // pula DNS/SSRF (host fictício)
-		vi.stubGlobal(
-			"fetch",
-			stubFetch([
+		replaceFetch(stubFetch([
 				[
 					/exemplo/,
 					{
@@ -381,7 +378,7 @@ describe("lista", () => {
 			[/storesearch/, { body: JSON.stringify({ items: [{ name: "The Sims™ 4" }] }) }],
 			[/skidrowreloaded/, { body: SKIDROW_HTML }],
 		]);
-		vi.stubGlobal("fetch", fetch);
+		replaceFetch(fetch);
 		expect(await correctGameName("thesims")).toBe("The Sims 4");
 		const text = await listaJogo("thesims");
 		expect(text).toContain("Nome corrigido: thesims → The Sims 4");
@@ -391,7 +388,7 @@ describe("lista", () => {
 	it("busca direta com acerto não chama o Steam", async () => {
 		process.env["AGENT_ALLOW_PRIVATE"] = "1";
 		const fetch = stubFetch([[/skidrowreloaded/, { body: SKIDROW_HTML }]]);
-		vi.stubGlobal("fetch", fetch);
+		replaceFetch(fetch);
 		const text = await listaJogo("the sims");
 		expect(text).toContain("1. The Sims 4");
 		expect(text).not.toContain("corrigido");
@@ -406,9 +403,7 @@ describe("lista", () => {
 
 	it("fetchMagnet baixa post e devolve magnet; sem magnet erra", async () => {
 		process.env["AGENT_ALLOW_PRIVATE"] = "1";
-		vi.stubGlobal(
-			"fetch",
-			stubFetch([
+		replaceFetch(stubFetch([
 				[/com-magnet/, { body: `<a href="magnet:?xt=urn:btih:ABC">M</a>` }],
 				[/sem-magnet/, { body: "<html>nada</html>" }],
 			]),
@@ -420,7 +415,7 @@ describe("lista", () => {
 
 	it("tool lista top 3 com rede mockada", async () => {
 		process.env["AGENT_ALLOW_PRIVATE"] = "1"; // pula DNS/SSRF (host fictício)
-		vi.stubGlobal("fetch", stubFetch([[/skidrowreloaded/, { body: SKIDROW_HTML }]]));
+		replaceFetch(stubFetch([[/skidrowreloaded/, { body: SKIDROW_HTML }]]));
 		const tool = listaTool();
 		expect(tool.name).toBe("lista");
 		const r = await tool.execute(

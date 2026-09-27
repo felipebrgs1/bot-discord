@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { migrate, schemaVersion } from "./db.ts";
 import { DEFAULT_SOUL, SoulStore } from "./souls.ts";
 

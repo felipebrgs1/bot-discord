@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { ConfigStore, DEFAULTS } from "./config.ts";
 import { migrate, openDatabase, schemaVersion } from "./db.ts";
 

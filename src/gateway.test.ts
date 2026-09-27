@@ -1,7 +1,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "bun:test";
+import { replaceFetch, restoreFetch } from "./test-support/stub-fetch.ts";
 import { DEFAULTS } from "./config.ts";
 import { DiscordGateway, isEligibleChannel, isTrigger } from "./gateway.ts";
 
@@ -27,9 +28,7 @@ function message(over: Record<string, unknown> = {}): Record<string, unknown> {
 
 describe("onMessage com imagem", () => {
 	it("anexo de imagem chega ao respond como base64", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
+		replaceFetch(vi.fn(async () => ({
 				ok: true,
 				status: 200,
 				headers: { get: (h: string) => (h === "content-type" ? "image/png" : null) },
@@ -81,16 +80,14 @@ describe("onMessage com imagem", () => {
 			expect(seen[0]?.images?.[0]?.data).toBe(Buffer.from("IMG").toString("base64"));
 			await gw.stop();
 		} finally {
-			vi.unstubAllGlobals();
+			restoreFetch();
 		}
 	});
 });
 
 describe("onMessage com foto anterior no canal", () => {
 	it("pergunta sem anexo usa a imagem recente do canal", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
+		replaceFetch(vi.fn(async () => ({
 				ok: true,
 				status: 200,
 				headers: { get: (h: string) => (h === "content-type" ? "image/png" : null) },
@@ -157,16 +154,14 @@ describe("onMessage com foto anterior no canal", () => {
 			expect(seen[0]?.images).toHaveLength(1);
 			await gw.stop();
 		} finally {
-			vi.unstubAllGlobals();
+			restoreFetch();
 		}
 	});
 });
 
 describe("onMessage com foto antiga no histórico", () => {
 	it("memória vazia (pós-restart) busca foto via API do canal", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
+		replaceFetch(vi.fn(async () => ({
 				ok: true,
 				status: 200,
 				headers: { get: (h: string) => (h === "content-type" ? "image/png" : null) },
@@ -230,16 +225,14 @@ describe("onMessage com foto antiga no histórico", () => {
 			expect(seen[0]?.images).toHaveLength(1);
 			await gw.stop();
 		} finally {
-			vi.unstubAllGlobals();
+			restoreFetch();
 		}
 	});
 });
 
 describe("onMessage com reply em imagem", () => {
 	it("foto da mensagem respondida também chega ao respond", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (url: unknown) => ({
+		replaceFetch(vi.fn(async (url: unknown) => ({
 				ok: true,
 				status: 200,
 				headers: { get: (h: string) => (h === "content-type" ? "image/jpeg" : null) },
@@ -294,7 +287,7 @@ describe("onMessage com reply em imagem", () => {
 			expect(seen[0]?.images).toHaveLength(2); // própria + respondida
 			await gw.stop();
 		} finally {
-			vi.unstubAllGlobals();
+			restoreFetch();
 		}
 	});
 });
@@ -348,8 +341,17 @@ const SKIDROW_IX_HTML = `<html><body><h2>2 search results</h2>
 <h2><a href="https://www.skidrowreloaded.com/forza-horizon-5-p2p/">Forza Horizon 5-P2P</a></h2>
 </body></html>`;
 
-function stubInteraction(over: Record<string, unknown> = {}): Record<string, unknown> {
-	const ix: Record<string, unknown> = {
+type FnMock = ReturnType<typeof vi.fn>;
+interface StubInteraction {
+	[key: string]: unknown;
+	reply: FnMock;
+	deferReply: FnMock;
+	editReply: FnMock;
+	deferred: boolean;
+}
+
+function stubInteraction(over: Record<string, unknown> = {}): StubInteraction {
+	const ix: StubInteraction = {
 		commandName: "lista",
 		isChatInputCommand: () => true,
 		isButton: () => false,
@@ -361,22 +363,19 @@ function stubInteraction(over: Record<string, unknown> = {}): Record<string, unk
 		options: { getString: () => "forza horizon" },
 		reply: vi.fn(async () => undefined),
 		deferred: false,
+		deferReply: vi.fn(async () => {
+			ix.deferred = true;
+		}),
+		editReply: vi.fn(async () => undefined),
 		...over,
 	};
-	if (!ix.deferReply)
-		ix.deferReply = vi.fn(async () => {
-			ix.deferred = true;
-		});
-	if (!ix.editReply) ix.editReply = vi.fn(async () => undefined);
 	return ix;
 }
 
 describe("onInteraction (/lista)", () => {
 	it("responde top 3, sem LLM", async () => {
 		process.env["AGENT_ALLOW_PRIVATE"] = "1";
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
+		replaceFetch(vi.fn(async () => ({
 				ok: true,
 				status: 200,
 				arrayBuffer: async () => new TextEncoder().encode(SKIDROW_IX_HTML).buffer as ArrayBuffer,
@@ -417,16 +416,14 @@ describe("onInteraction (/lista)", () => {
 			expect(payload.components).toHaveLength(1);
 			expect(persisted).toHaveLength(1);
 		} finally {
-			vi.unstubAllGlobals();
+			restoreFetch();
 			delete process.env["AGENT_ALLOW_PRIVATE"];
 		}
 	});
 
 	it("falha na busca edita com erro", async () => {
 		process.env["AGENT_ALLOW_PRIVATE"] = "1";
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => {
+		replaceFetch(vi.fn(async () => {
 				throw new Error("rede caiu");
 			}),
 		);
@@ -444,16 +441,14 @@ describe("onInteraction (/lista)", () => {
 			expect(edit).toHaveBeenCalledTimes(1);
 			expect(String(edit.mock.calls[0]?.[0])).toContain("não rolou");
 		} finally {
-			vi.unstubAllGlobals();
+			restoreFetch();
 			delete process.env["AGENT_ALLOW_PRIVATE"];
 		}
 	});
 
 	it("botão 1 traz o magnet da opção", async () => {
 		process.env["AGENT_ALLOW_PRIVATE"] = "1";
-		vi.stubGlobal(
-			"fetch",
-			stubFetch([
+		replaceFetch(stubFetch([
 				[/forza-horizon-6-rune\/$/, { body: `<a href="magnet:?xt=urn:btih:HASH123">MAGNET</a>` }],
 				[/skidrowreloaded/, { body: SKIDROW_IX_HTML }],
 			]),
@@ -492,7 +487,7 @@ describe("onInteraction (/lista)", () => {
 			expect(magnet).toContain("1. Forza Horizon 6-RUNE");
 			expect(magnet).toContain("magnet:?xt=urn:btih:HASH123");
 		} finally {
-			vi.unstubAllGlobals();
+			restoreFetch();
 			delete process.env["AGENT_ALLOW_PRIVATE"];
 		}
 	});

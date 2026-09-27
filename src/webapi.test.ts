@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "bun:test";
 import { ConfigStore } from "./config.ts";
 import { migrate } from "./db.ts";
 import { ChannelSessions, type SessionFactory } from "./sessions.ts";
@@ -56,7 +56,7 @@ function request(
 	url: string,
 	opts?: { body?: unknown; cookie?: string },
 ): Promise<Resp> {
-	return new Promise((resolve, reject) => {
+	return new Promise((resolve) => {
 		const req = new EventEmitter() as unknown as IncomingMessage;
 		(req as unknown as Record<string, unknown>)["method"] = method;
 		(req as unknown as Record<string, unknown>)["url"] = url;

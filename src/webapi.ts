@@ -671,7 +671,7 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
 			res.end(`<!doctype html><html><body style="font-family:sans-serif;padding:2rem">
 <h1>Painel sem build</h1>
-<p>Rode <code>pnpm --filter discord-bot-web run build</code> na raiz do repo.</p>
+<p>Rode <code>bun run --cwd web build</code> na raiz do repo.</p>
 </body></html>`);
 		};
 		let rel = decodeURIComponent(path);

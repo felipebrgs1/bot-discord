@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { migrate } from "../db.ts";
 import type { ToolCtx } from "../tools/index.ts";
 import { memorySearchTool } from "../tools/memory.ts";
