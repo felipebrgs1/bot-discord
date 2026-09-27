@@ -63,15 +63,41 @@ export function parseSkidrowTop(html: string, limit = 3): SkidrowHit[] {
 	return out;
 }
 
-/** Embed do /lista: título = nome do jogo, itens = links, thumb = capa. */
+/** Cor lateral vibrante e determinística por jogo (sem cinza padrão). */
+export function colorForGame(name: string): number {
+	let h = 0;
+	for (let i = 0; i < name.length; i++) h = (h * 31 + (name.charCodeAt(i) ?? 0)) % 360;
+	return hslToInt(h, 70, 50);
+}
+
+function hslToInt(h: number, s: number, l: number): number {
+	s /= 100;
+	l /= 100;
+	const k = (n: number): number => (n + h / 30) % 12;
+	const a = s * Math.min(l, 1 - l);
+	const f = (n: number): number => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+	return (Math.round(f(0) * 255) << 16) | (Math.round(f(8) * 255) << 8) | Math.round(f(4) * 255);
+}
+
+function trunc(s: string, max: number): string {
+	return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/**
+ * Embed do /lista: cor por jogo, título curto com emoji, capa grande,
+ * 3 fields (nome + link clicável, sem texto solto), footer + timestamp.
+ */
 export function listaEmbed(displayName: string, hits: SkidrowHit[], correctedFrom?: string): EmbedBuilder {
-	const embed = new EmbedBuilder()
-		.setTitle(displayName)
-		.setDescription(hits.map((h, n) => `**${n + 1}.** [${h.title}](${h.url})`).join("\n"))
-		.setColor(0x2b2d31);
+	const short = trunc(displayName, 200);
+	const embed = new EmbedBuilder().setTitle(`🎮 ${short}`).setColor(colorForGame(short));
 	const cover = hits[0]?.cover;
-	if (cover) embed.setThumbnail(cover);
-	if (correctedFrom) embed.setFooter({ text: `Nome corrigido: ${correctedFrom} → ${displayName}` });
+	if (cover) embed.setImage(cover);
+	for (let i = 0; i < Math.min(hits.length, 3); i++) {
+		const h = hits[i] as SkidrowHit;
+		embed.addFields({ name: `${i + 1}. ${trunc(h.title, 200)}`, value: `[🔗 Ver página](${h.url})` });
+	}
+	const corrected = correctedFrom ? `Corrigido: ${correctedFrom} → ${short} · ` : "";
+	embed.setFooter({ text: `${corrected}Top 3 · Skidrow Reloaded` }).setTimestamp();
 	return embed;
 }
 

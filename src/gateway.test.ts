@@ -86,6 +86,219 @@ describe("onMessage com imagem", () => {
 	});
 });
 
+describe("onMessage com foto anterior no canal", () => {
+	it("pergunta sem anexo usa a imagem recente do canal", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				status: 200,
+				headers: { get: (h: string) => (h === "content-type" ? "image/png" : null) },
+				arrayBuffer: async () => new TextEncoder().encode("IMG").buffer as ArrayBuffer,
+			})),
+		);
+		try {
+			const seen: { text: string; images?: { data: string }[] }[] = [];
+			const handlers: Record<string, (m: unknown) => void> = {};
+			const client = {
+				once: () => undefined,
+				on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+				login: async () => undefined,
+				destroy: () => undefined,
+			};
+			const gw = new DiscordGateway(
+				settings,
+				async (_c, _a, text, images) => {
+					seen.push({ text, images });
+					return "vi";
+				},
+				client as never,
+				undefined,
+				() => undefined,
+			);
+			(gw as unknown as { botUserId: string }).botUserId = "bot";
+			await gw.start("tok");
+			const base = {
+				reply: vi.fn(async () => undefined),
+				react: vi.fn(async () => undefined),
+				reactions: { cache: new Map() },
+				channel: {
+					messages: { cache: new Map() },
+					send: vi.fn(async () => undefined),
+					sendTyping: vi.fn(async () => undefined),
+				},
+			};
+			// Foto sem mencionar: não dispara, mas entra na memória do canal.
+			handlers["messageCreate"]?.(
+				message({
+					id: "m20",
+					content: "",
+					attachments: new Map([["a1", { contentType: "image/png", size: 3, url: "https://cdn/foto.png" }]]),
+					stickers: new Map(),
+					...base,
+				}),
+			);
+			await new Promise((r) => setTimeout(r, 50));
+			expect(seen).toHaveLength(0);
+			// Pergunta mencionando, sem anexo: enxerga a foto anterior.
+			handlers["messageCreate"]?.(
+				message({
+					id: "m21",
+					content: "quem ta nessa foto",
+					mentions: { users: { size: 1 }, has: () => true },
+					attachments: new Map(),
+					stickers: new Map(),
+					...base,
+				}),
+			);
+			await new Promise((r) => setTimeout(r, 100));
+			expect(seen).toHaveLength(1);
+			expect(seen[0]?.text).toBe("quem ta nessa foto");
+			expect(seen[0]?.images).toHaveLength(1);
+			await gw.stop();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
+describe("onMessage com foto antiga no histórico", () => {
+	it("memória vazia (pós-restart) busca foto via API do canal", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				status: 200,
+				headers: { get: (h: string) => (h === "content-type" ? "image/png" : null) },
+				arrayBuffer: async () => new TextEncoder().encode("IMG").buffer as ArrayBuffer,
+			})),
+		);
+		try {
+			const seen: { images?: { data: string }[] }[] = [];
+			const handlers: Record<string, (m: unknown) => void> = {};
+			const client = {
+				once: () => undefined,
+				on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+				login: async () => undefined,
+				destroy: () => undefined,
+			};
+			const gw = new DiscordGateway(
+				settings,
+				async (_c, _a, _t, images) => {
+					seen.push({ images });
+					return "vi";
+				},
+				client as never,
+				undefined,
+				() => undefined,
+			);
+			(gw as unknown as { botUserId: string }).botUserId = "bot";
+			await gw.start("tok");
+			const history = new Map([
+				[
+					"m30",
+					{
+						id: "m30",
+						attachments: new Map([["a1", { contentType: "image/png", size: 3, url: "https://cdn/antiga.png" }]]),
+						stickers: new Map(),
+						embeds: [],
+					},
+				],
+			]);
+			const base = {
+				reply: vi.fn(async () => undefined),
+				react: vi.fn(async () => undefined),
+				reactions: { cache: new Map() },
+				channel: {
+					messages: { cache: new Map(), fetch: async () => history },
+					send: vi.fn(async () => undefined),
+					sendTyping: vi.fn(async () => undefined),
+				},
+			};
+			handlers["messageCreate"]?.(
+				message({
+					id: "m31",
+					content: "quem ta nessa foto",
+					mentions: { users: { size: 1 }, has: () => true },
+					attachments: new Map(),
+					stickers: new Map(),
+					...base,
+				}),
+			);
+			await new Promise((r) => setTimeout(r, 100));
+			expect(seen).toHaveLength(1);
+			expect(seen[0]?.images).toHaveLength(1);
+			await gw.stop();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
+describe("onMessage com reply em imagem", () => {
+	it("foto da mensagem respondida também chega ao respond", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: unknown) => ({
+				ok: true,
+				status: 200,
+				headers: { get: (h: string) => (h === "content-type" ? "image/jpeg" : null) },
+				arrayBuffer: async () => new TextEncoder().encode(`bytes-de-${String(url)}`).buffer as ArrayBuffer,
+			})),
+		);
+		try {
+			const seen: { images?: { data: string }[] }[] = [];
+			const handlers: Record<string, (m: unknown) => void> = {};
+			const client = {
+				once: () => undefined,
+				on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+				login: async () => undefined,
+				destroy: () => undefined,
+			};
+			const gw = new DiscordGateway(
+				settings,
+				async (_c, _a, _t, images) => {
+					seen.push({ images });
+					return "vi";
+				},
+				client as never,
+				undefined,
+				() => undefined,
+			);
+			(gw as unknown as { botUserId: string }).botUserId = "bot";
+			await gw.start("tok");
+			const refMsg = {
+				attachments: new Map([["r1", { contentType: "image/jpeg", size: 5, url: "https://cdn/ref.jpg" }]]),
+				stickers: new Map(),
+				embeds: [],
+			};
+			const msg = message({
+				id: "m10",
+				content: "olha isso",
+				mentions: { users: { size: 1 }, has: () => true },
+				reference: { messageId: "m0" },
+				attachments: new Map([["a1", { contentType: "image/png", size: 3, url: "https://cdn/minha.png" }]]),
+				stickers: new Map(),
+				reply: vi.fn(async () => undefined),
+				react: vi.fn(async () => undefined),
+				reactions: { cache: new Map() },
+				channel: {
+					messages: { cache: new Map(), fetch: async () => refMsg },
+					send: vi.fn(async () => undefined),
+					sendTyping: vi.fn(async () => undefined),
+				},
+			});
+			handlers["messageCreate"]?.(msg);
+			await new Promise((r) => setTimeout(r, 100));
+			expect(seen).toHaveLength(1);
+			expect(seen[0]?.images).toHaveLength(2); // própria + respondida
+			await gw.stop();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
 describe("isEligibleChannel", () => {
 	it("só canal allowlist de guild (DM/bot fora)", () => {
 		expect(isEligibleChannel(message() as never, settings())).toBe(true);

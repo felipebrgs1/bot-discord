@@ -23,7 +23,7 @@ import { discard, pendingAttachments } from "./outbox.ts";
 import { roleOf } from "./roles.ts";
 import { splitMessage } from "./split.ts";
 import { fetchMagnet, LISTA_COMMAND_JSON, listaEmbed, type SkidrowHit, searchSkidrow } from "./tools/skidrow.ts";
-import { collectImageUrls, downloadImages, type VisionImage } from "./vision.ts";
+import { collectImageUrls, downloadImages, MAX_VISION_IMAGES, type VisionImage } from "./vision.ts";
 
 /** Itera Collection/Map de anexos (ou nada, quando ausente). */
 function valuesOf<T>(c: { values(): Iterable<T> } | undefined): Iterable<T> | undefined {
@@ -32,6 +32,88 @@ function valuesOf<T>(c: { values(): Iterable<T> } | undefined): Iterable<T> | un
 	} catch {
 		return undefined;
 	}
+}
+
+interface ReferencedMessage {
+	attachments?: { values(): Iterable<{ contentType?: string | null; url: string }> };
+	stickers?: { values(): Iterable<{ url: string }> };
+	embeds?: { thumbnail?: { url?: string }; image?: { url?: string } }[];
+}
+
+/** Capas de embeds (ex.: resultado do /lista). */
+function embedImageUrls(embeds: ReferencedMessage["embeds"]): string[] {
+	const out: string[] = [];
+	for (const e of embeds ?? []) {
+		for (const url of [e.thumbnail?.url, e.image?.url]) {
+			if (url && !url.endsWith(".json") && !out.includes(url)) out.push(url);
+		}
+	}
+	return out;
+}
+
+interface HistoryMessage {
+	id: string;
+	attachments?: { values(): Iterable<{ contentType?: string | null; url: string }> };
+	stickers?: { values(): Iterable<{ url: string }> };
+	embeds?: ReferencedMessage["embeds"];
+}
+
+/**
+ * Fotos recentes do canal via API (sobrevive a restart; pega foto de antes
+ * do boot). Só usado quando não há imagem direta nem na memória curta.
+ */
+async function channelHistoryImageUrls(m: GuildMessage): Promise<string[]> {
+	const fetch = (
+		m.channel.messages as unknown as {
+			fetch?: (opts: { limit: number }) => Promise<{ values(): Iterable<HistoryMessage> }>;
+		}
+	).fetch;
+	if (typeof fetch !== "function") return [];
+	let batch: { values(): Iterable<HistoryMessage> };
+	try {
+		batch = await fetch({ limit: 10 });
+	} catch {
+		return [];
+	}
+	const out: string[] = [];
+	for (const msg of batch.values()) {
+		if (msg.id === m.id || out.length >= MAX_VISION_IMAGES) continue;
+		for (const u of [
+			...collectImageUrls(
+				valuesOf(msg.attachments) as Iterable<{ contentType?: string | null; url: string }> | undefined,
+				valuesOf(msg.stickers) as Iterable<{ url: string }> | undefined,
+			),
+			...embedImageUrls(msg.embeds),
+		]) {
+			if (out.length >= MAX_VISION_IMAGES) break;
+			if (!out.includes(u)) out.push(u);
+		}
+	}
+	return out;
+}
+
+/**
+ * Imagens da mensagem respondida (reply com foto): anexos + stickers +
+ * capas de embeds (ex.: reply no /lista). Falha isolada = sem imagem extra.
+ */
+async function referencedImageUrls(m: GuildMessage): Promise<string[]> {
+	const refId = m.reference?.messageId;
+	const fetch = (m.channel.messages as unknown as { fetch?: (id: string) => Promise<ReferencedMessage> }).fetch;
+	if (!refId || typeof fetch !== "function") return [];
+	let ref: ReferencedMessage;
+	try {
+		ref = await fetch(refId);
+	} catch {
+		return [];
+	}
+	const out = collectImageUrls(
+		valuesOf(ref.attachments) as Iterable<{ contentType?: string | null; url: string }> | undefined,
+		valuesOf(ref.stickers) as Iterable<{ url: string }> | undefined,
+	);
+	for (const u of embedImageUrls(ref.embeds)) {
+		if (!out.includes(u)) out.push(u);
+	}
+	return out;
 }
 
 export type Respond = (channelId: string, authorId: string, text: string, images?: VisionImage[]) => Promise<string>;
@@ -147,6 +229,7 @@ export async function trackWorking<T>(message: Reactable, botUserId: string, wor
 }
 
 const SKIDROW_TTL_MS = 15 * 60 * 1000;
+const RECENT_IMAGE_TTL_MS = 10 * 60 * 1000;
 
 /** Linha de botões 1..n p/ escolher o magnet (some quando não há hits). */
 function magnetRow(n: number): ActionRowBuilder<ButtonBuilder>[] {
@@ -169,6 +252,7 @@ export class DiscordGateway {
 	private readonly running = new Set<string>();
 	private readonly lastReply = new Map<string, number>();
 	private readonly skidrowTop = new Map<string, { hits: SkidrowHit[]; at: number }>();
+	private readonly channelImages = new Map<string, { urls: string[]; at: number }>();
 	private botUserId = "";
 
 	private readonly getSettings: () => BotSettings;
@@ -310,6 +394,28 @@ export class DiscordGateway {
 		}
 	}
 
+	/** Guarda URLs de imagem vistas no canal (memória visual curta, 10 min). */
+	private rememberImageUrls(channelId: string, urls: string[]): void {
+		const now = Date.now();
+		for (const [id, e] of this.channelImages) {
+			if (now - e.at > RECENT_IMAGE_TTL_MS) this.channelImages.delete(id);
+		}
+		if (urls.length === 0) return;
+		const prev = this.channelImages.get(channelId)?.urls ?? [];
+		const merged = [...prev, ...urls.filter((u) => !prev.includes(u))].slice(-MAX_VISION_IMAGES);
+		this.channelImages.set(channelId, { urls: merged, at: now });
+	}
+
+	/** URLs recentes do canal (mais novas por último), vazias se expiradas. */
+	private recentImageUrls(channelId: string): string[] {
+		const e = this.channelImages.get(channelId);
+		if (!e || Date.now() - e.at > RECENT_IMAGE_TTL_MS) {
+			this.channelImages.delete(channelId);
+			return [];
+		}
+		return e.urls;
+	}
+
 	/** Guarda o top 3 do canal p/ os botões 1/2/3 (expira em 15 min). */
 	private rememberTop(channelId: string, hits: SkidrowHit[]): void {
 		const now = Date.now();
@@ -373,17 +479,20 @@ export class DiscordGateway {
 		);
 		if (!eligible) return;
 		const m = message as GuildMessage;
-		const images = await downloadImages(collectImageUrls(valuesOf(m.attachments), valuesOf(m.stickers))).catch(
-			() => [] as VisionImage[],
-		);
-		const text = m.content || (images.length > 0 ? "(imagem anexada)" : "");
+		// URLs primeiro (barato): próprias + mensagem respondida; download só se disparar.
+		const direct = collectImageUrls(valuesOf(m.attachments), valuesOf(m.stickers));
+		for (const u of await referencedImageUrls(m)) {
+			if (direct.length >= MAX_VISION_IMAGES) break;
+			if (!direct.includes(u)) direct.push(u);
+		}
+		this.rememberImageUrls(m.channelId, direct);
 		try {
 			this.persist?.({
 				channelId: m.channelId,
 				authorId: m.author.id,
 				authorName: m.author.username,
 				messageId: m.id,
-				body: `${m.content ?? ""}${images.length > 0 ? " [imagem]" : ""}`.slice(0, 4000),
+				body: `${m.content ?? ""}${direct.length > 0 ? " [imagem]" : ""}`.slice(0, 4000),
 				replyTo: m.reference?.messageId,
 			});
 		} catch {
@@ -407,6 +516,20 @@ export class DiscordGateway {
 		this.emit(`msg trigger=${trigger} mencoes=${m.mentions.users.size}`);
 		if (!trigger) return;
 
+		// Sem imagem própria: memória curta e, por último, histórico via API.
+		const urls = [...direct];
+		for (const u of this.recentImageUrls(m.channelId)) {
+			if (urls.length >= MAX_VISION_IMAGES) break;
+			if (!urls.includes(u)) urls.push(u);
+		}
+		if (urls.length === 0) {
+			for (const u of await channelHistoryImageUrls(m)) {
+				if (urls.length >= MAX_VISION_IMAGES) break;
+				if (!urls.includes(u)) urls.push(u);
+			}
+		}
+		const images = await downloadImages(urls).catch(() => [] as VisionImage[]);
+		const text = m.content || (images.length > 0 ? "(imagem anexada)" : "");
 		const incoming: Incoming = {
 			message: m,
 			channelId: m.channelId,
