@@ -13,18 +13,20 @@ import { join, normalize, sep } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import type { ConfigStore } from "./application/ports/config-store.ts";
 import type { Persona } from "./application/persona.ts";
-import { recordTurn } from "./metrics.ts";
+import type { LogFeed } from "./application/ports/log-feed.ts";
+import type { Logger } from "./application/ports/logger.ts";
+import type { MetricsQuery, MetricsSink, MetricsTotals } from "./application/ports/metrics.ts";
 import { roleOf } from "./domain/roles.ts";
 import type { ChannelSessions } from "./sessions.ts";
 import type { SoulStore } from "./application/ports/soul-store.ts";
 import { DEFAULT_SOUL } from "./domain/soul.ts";
-import type { LogBuffer } from "./weblog.ts";
 
 export interface WebDeps {
 	db: DatabaseSync;
 	config: ConfigStore;
 	sessions: ChannelSessions;
-	log: LogBuffer;
+	log: Logger & LogFeed;
+	metrics: MetricsSink & MetricsQuery;
 	/** Diretório com o build do front (web/dist). */
 	webDir: string;
 	/** Senha do painel (DASHBOARD_PASSWORD); vazio = sem login. */
@@ -144,7 +146,7 @@ function emptyStats(): Record<string, unknown> {
 }
 
 export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: ServerResponse) => void {
-	const { db, config, sessions, log, webDir, password, souls, persona } = deps;
+	const { db, config, sessions, log, metrics, webDir, password, souls, persona } = deps;
 
 	const authed = (req: IncomingMessage): boolean => {
 		if (!password) return true;
@@ -154,7 +156,7 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 
 	return (req, res) => {
 		void handle(req, res).catch((e: unknown) => {
-			log.log("error", "webapi", { error: e instanceof Error ? e.message : String(e) });
+			log.error(`webapi: ${e instanceof Error ? e.message : String(e)}`);
 			if (!res.headersSent) err(res, 500, "erro interno");
 			else res.end();
 		});
@@ -471,107 +473,57 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 	}
 
 	function metricsSnapshot(): Record<string, unknown> {
-		const total = db.prepare("SELECT COUNT(*) AS n FROM ai_requests;").get() as { n: number };
-		const failed = db.prepare("SELECT COUNT(*) AS n FROM ai_requests WHERE status <> 'success';").get() as {
-			n: number;
-		};
-		const inSum = db.prepare("SELECT COALESCE(SUM(input_tokens),0) AS s FROM ai_requests;").get() as {
-			s: number;
-		};
-		const outSum = db.prepare("SELECT COALESCE(SUM(output_tokens),0) AS s FROM ai_requests;").get() as {
-			s: number;
-		};
-		const costSum = db.prepare("SELECT COALESCE(SUM(cost),0) AS s FROM ai_requests;").get() as {
-			s: number;
-		};
-		const cacheSum = db
-			.prepare(
-				`SELECT COALESCE(SUM(cached_tokens),0) AS rd,
-              COALESCE(SUM(cache_write_tokens),0) AS wr,
-              COUNT(CASE WHEN COALESCE(cached_tokens,0) > 0 OR COALESCE(cache_write_tokens,0) > 0 THEN 1 END) AS samples
-       FROM ai_requests;`,
-			)
-			.get() as { rd: number; wr: number; samples: number };
-		const byModel = db
-			.prepare(
-				`SELECT model, provider, operation, source,
-				 COUNT(*) AS requests, SUM(status <> 'success') AS failures,
-				 COALESCE(SUM(input_tokens),0) AS input_tokens,
-				 COALESCE(SUM(output_tokens),0) AS output_tokens,
-				 COALESCE(SUM(cached_tokens),0) AS cached_tokens,
-				 COALESCE(SUM(cache_write_tokens),0) AS cache_write_tokens,
-				 COUNT(CASE WHEN COALESCE(cached_tokens,0) > 0 OR COALESCE(cache_write_tokens,0) > 0 THEN 1 END) AS cache_samples,
-				 COALESCE(SUM(cost),0) AS cost_usd,
-				 AVG(latency_ms) AS avg_latency_ms
-			 FROM ai_requests GROUP BY model, provider, operation, source;`,
-			)
-			.all() as Record<string, number | string>[];
-		const recent = db.prepare("SELECT * FROM ai_requests ORDER BY rowid DESC LIMIT 50;").all() as Record<
-			string,
-			number | string | null
-		>[];
+		const { totals, byModel, recent } = metrics.snapshot();
+		const stats = (t: MetricsTotals) => ({
+			...emptyStats(),
+			requests: t.requests,
+			failures: t.failures,
+			input_tokens: t.inputTokens,
+			output_tokens: t.outputTokens,
+			cached_tokens: t.cachedTokens,
+			cache_write_tokens: t.cacheWriteTokens,
+			cache_samples: t.cacheSamples,
+			cost_usd: t.costUsd,
+			token_samples: t.requests,
+			cost_samples: t.requests,
+		});
 		const now = new Date().toISOString();
 		return {
 			since: now,
 			until: now,
 			bucket_seconds: 3600,
-			summary: {
-				...emptyStats(),
-				requests: total.n,
-				failures: failed.n,
-				input_tokens: inSum.s,
-				output_tokens: outSum.s,
-				cached_tokens: cacheSum.rd,
-				cache_write_tokens: cacheSum.wr,
-				cache_samples: cacheSum.samples,
-				cost_usd: costSum.s,
-				token_samples: total.n,
-				cost_samples: total.n,
-			},
+			summary: stats(totals),
 			series: [],
-			models: byModel.map((r) => ({
-				...emptyStats(),
-				provider: r["provider"],
-				model: r["model"],
-				operation: r["operation"],
-				source: r["source"],
-				requests: r["requests"],
-				failures: r["failures"],
-				input_tokens: r["input_tokens"],
-				output_tokens: r["output_tokens"],
-				cached_tokens: r["cached_tokens"],
-				cache_write_tokens: r["cache_write_tokens"],
-				cache_samples: r["cache_samples"],
-				cost_usd: r["cost_usd"],
-				avg_latency_ms: r["avg_latency_ms"],
-				token_samples: r["requests"],
-				cost_samples: r["requests"],
+			models: byModel.map((m) => ({
+				...stats(m),
+				provider: m.provider,
+				model: m.model,
+				operation: m.operation,
+				source: m.source,
+				avg_latency_ms: m.avgLatencyMs,
 			})),
 			recent: recent.map((r) => ({
-				id: r["rowid"],
-				started_at: r["created_at"],
-				duration_ms: r["latency_ms"],
-				operation: r["operation"],
+				id: r.id,
+				started_at: r.startedAt,
+				duration_ms: r.durationMs,
+				operation: r.operation,
 				workflow: "",
 				channel_id: "",
-				source: r["source"],
-				provider: r["provider"],
-				model: r["model"],
-				resolved_model: r["model"],
-				request_id: String(r["rowid"]),
-				success: r["status"] === "success",
-				http_status: r["status"] === "success" ? 200 : 500,
+				source: r.source,
+				provider: r.provider,
+				model: r.model,
+				resolved_model: r.model,
+				request_id: String(r.id),
+				success: r.success,
+				http_status: r.success ? 200 : 500,
 				attempts: 1,
-				error_kind: r["status"] === "success" ? "" : "error",
-				input_tokens: r["input_tokens"],
-				output_tokens: r["output_tokens"],
-				total_tokens:
-					typeof r["input_tokens"] === "number" && typeof r["output_tokens"] === "number"
-						? (r["input_tokens"] as number) + (r["output_tokens"] as number)
-						: null,
-				cached_tokens: r["cached_tokens"],
-				cache_write_tokens: r["cache_write_tokens"],
-				cost_usd: r["cost"],
+				error_kind: r.success ? "" : "error",
+				input_tokens: r.inputTokens,
+				output_tokens: r.outputTokens,
+				total_tokens: r.inputTokens !== null && r.outputTokens !== null ? r.inputTokens + r.outputTokens : null,
+				cached_tokens: r.cachedTokens,
+				cache_write_tokens: r.cacheWriteTokens,
+				cost_usd: r.costUsd,
 			})),
 			options: { models: [], providers: [] },
 			refresh_ms: 5000,
@@ -645,7 +597,7 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 					source: "web",
 					model: settings.chat.model,
 					systemExtra: systemExtra || undefined,
-					onTurn: (r) => recordTurn(db, r),
+					onTurn: (r) => metrics.record(r),
 				});
 			} finally {
 				try {

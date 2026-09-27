@@ -9,7 +9,8 @@ import { SqliteMemoryStore } from "./adapters/out/sqlite/memory-store.ts";
 import { SqliteSoulStore } from "./adapters/out/sqlite/soul-store.ts";
 import { Persona } from "./application/persona.ts";
 import { createWebHandler, type WebDeps } from "./webapi.ts";
-import { LogBuffer } from "./weblog.ts";
+import { LogBuffer } from "./adapters/out/log/log-buffer.ts";
+import { SqliteMetrics } from "./adapters/out/sqlite/metrics.ts";
 
 function deps(password = ""): WebDeps & { db: DatabaseSync } {
 	const db = new DatabaseSync(":memory:");
@@ -39,7 +40,8 @@ function deps(password = ""): WebDeps & { db: DatabaseSync } {
 		db,
 		config: new SqliteConfigStore(db),
 		sessions: new ChannelSessions(factory),
-		log: new LogBuffer(),
+		log: new LogBuffer(() => undefined),
+		metrics: new SqliteMetrics(db),
 		webDir: "/nao-existe",
 		password,
 		souls: new SqliteSoulStore(db),

@@ -170,7 +170,7 @@ export function downloadMediaTool(ctx: ToolCtx): ToolDefinition {
 				5 * 60_000,
 			);
 			if (!r.ok) {
-				ctx.log.log("error", "media_download_failed", { url: raw.slice(0, 120), out: r.out.slice(0, 500) });
+				ctx.log.error(`media_download_failed url=${raw.slice(0, 120)} out=${r.out.slice(0, 500)}`);
 				return textResult(`erro no download: ${r.out.slice(0, 2000)}`);
 			}
 			const got: string[] = [];

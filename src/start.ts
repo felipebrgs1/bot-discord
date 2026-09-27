@@ -22,7 +22,8 @@ import { SqliteMessageStore } from "./adapters/out/sqlite/message-store.ts";
 import { ConsolidateMemory } from "./application/consolidate-memory.ts";
 import { MessageLog } from "./application/message-log.ts";
 import { Persona } from "./application/persona.ts";
-import { recordTurn } from "./metrics.ts";
+import { LogBuffer } from "./adapters/out/log/log-buffer.ts";
+import { SqliteMetrics } from "./adapters/out/sqlite/metrics.ts";
 import { SqliteSoulStore } from "./adapters/out/sqlite/soul-store.ts";
 
 const DEFAULT_SOUL_FALLBACK = "Você é um amigo do servidor: direto, bem-humorado, fala PT-BR.";
@@ -31,7 +32,6 @@ import { roleOf } from "./domain/roles.ts";
 import { ChannelSessions, piSessionFactory } from "./sessions.ts";
 import { listaJogo } from "./tools/skidrow.ts";
 import { startDashboard } from "./webapi.ts";
-import { LogBuffer } from "./weblog.ts";
 
 export interface StartOptions {
 	dbPath: string;
@@ -68,10 +68,8 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 	const memories = new SqliteMemoryStore(db);
 	const persona = new Persona(souls, memories);
 
-	const logger: Logger = {
-		info: (msg) => log.log("info", msg),
-		warn: (msg) => log.log("warn", msg),
-	};
+	const logger: Logger = log;
+	const metrics = new SqliteMetrics(db);
 	const messageLog = new MessageLog(messages, logger);
 
 	// ChatAgent provisorio: sessoes do pi + soul + familiaridade (vira adapter pi-agent).
@@ -83,7 +81,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 				model: config.all().chat.model,
 				systemExtra: systemExtra || undefined,
 				images: images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType })),
-				onTurn: (r) => recordTurn(db, r),
+				onTurn: (r) => metrics.record(r),
 			});
 		},
 	};
@@ -183,6 +181,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 				password: secret("DASHBOARD_PASSWORD"),
 				souls,
 				persona,
+				metrics,
 			},
 			port,
 			options.dashboardHost ?? "127.0.0.1",

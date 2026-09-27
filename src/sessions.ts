@@ -14,7 +14,37 @@ import {
 	getAgentDir,
 	SessionManager,
 } from "@earendil-works/pi-coding-agent";
-import { type StatsTotals, statsOf, type TurnReport } from "./metrics.ts";
+import type { TurnReport } from "./domain/turn.ts";
+
+interface StatsTotals {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: number;
+}
+
+/** Totais acumulados da sessao (getSessionStats do SDK); null se indisponivel. */
+function statsOf(session: unknown): StatsTotals | null {
+	try {
+		const s = session as { getSessionStats?: () => unknown };
+		if (typeof s.getSessionStats !== "function") return null;
+		const stats = s.getSessionStats() as {
+			tokens?: { input?: unknown; output?: unknown; cacheRead?: unknown; cacheWrite?: unknown };
+			cost?: unknown;
+		};
+		const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+		return {
+			input: num(stats.tokens?.input),
+			output: num(stats.tokens?.output),
+			cacheRead: num(stats.tokens?.cacheRead),
+			cacheWrite: num(stats.tokens?.cacheWrite),
+			cost: num(stats.cost),
+		};
+	} catch {
+		return null;
+	}
+}
 import { canUseHostTools, type Role } from "./domain/roles.ts";
 import { type ToolCtx, toolsFor } from "./tools/index.ts";
 
@@ -162,11 +192,11 @@ export class ChannelSessions {
 			provider: actualProvider || opts?.provider || "",
 			source: opts?.source ?? "discord",
 			status,
-			latency_ms: Date.now() - started,
-			input_tokens: before && after ? Math.max(0, after.input - before.input) : null,
-			output_tokens: before && after ? Math.max(0, after.output - before.output) : null,
-			cached_tokens: before && after ? Math.max(0, after.cacheRead - before.cacheRead) : null,
-			cache_write_tokens: before && after ? Math.max(0, after.cacheWrite - before.cacheWrite) : null,
+			latencyMs: Date.now() - started,
+			inputTokens: before && after ? Math.max(0, after.input - before.input) : null,
+			outputTokens: before && after ? Math.max(0, after.output - before.output) : null,
+			cachedTokens: before && after ? Math.max(0, after.cacheRead - before.cacheRead) : null,
+			cacheWriteTokens: before && after ? Math.max(0, after.cacheWrite - before.cacheWrite) : null,
 			cost: before && after ? Math.max(0, after.cost - before.cost) : null,
 		};
 	}

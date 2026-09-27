@@ -7,7 +7,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { Role } from "../domain/roles.ts";
-import type { LogBuffer } from "../weblog.ts";
+import type { Logger } from "../application/ports/logger.ts";
 import { searchHistoryTool } from "./history.ts";
 import { downloadMediaTool } from "./media.ts";
 import { memorySearchTool } from "./memory.ts";
@@ -25,7 +25,7 @@ export function textResult(text: string): {
 export interface ToolCtx {
 	channelId: string;
 	db: DatabaseSync;
-	log: LogBuffer;
+	log: Logger;
 	outboxDir: string;
 }
 

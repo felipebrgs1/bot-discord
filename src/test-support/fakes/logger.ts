@@ -10,4 +10,8 @@ export class FakeLogger implements Logger {
 	warn(message: string): void {
 		this.lines.push(`warn ${message}`);
 	}
+
+	error(message: string): void {
+		this.lines.push(`error ${message}`);
+	}
 }

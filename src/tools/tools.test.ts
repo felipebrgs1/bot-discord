@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import { replaceFetch, restoreFetch } from "../test-support/stub-fetch.ts";
 import { migrate } from "../adapters/out/sqlite/db.ts";
 import { discard, outboxDirFor, pendingAttachments } from "../outbox.ts";
-import { LogBuffer } from "../weblog.ts";
+import { FakeLogger } from "../test-support/fakes/logger.ts";
 import { searchHistoryTool } from "./history.ts";
 import { type ToolCtx, toolsFor } from "./index.ts";
 import { downloadMediaTool } from "./media.ts";
@@ -60,7 +60,7 @@ function memDb(): DatabaseSync {
 }
 
 function ctx(channelId: string, db: DatabaseSync, outboxDir: string): ToolCtx {
-	return { channelId, db, log: new LogBuffer(), outboxDir };
+	return { channelId, db, log: new FakeLogger(), outboxDir };
 }
 
 describe("web_search", () => {

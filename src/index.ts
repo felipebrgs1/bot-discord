@@ -12,7 +12,7 @@ export {
 	type PersistedMessage,
 	trackWorking,
 } from "./gateway.ts";
-export { recordTurn, statsOf, type TurnReport } from "./metrics.ts";
+export type { TurnReport } from "./domain/turn.ts";
 export { discard, outboxDirFor, pendingAttachments } from "./outbox.ts";
 export { canUseHostTools, type Role, roleOf } from "./domain/roles.ts";
 export {
@@ -27,4 +27,4 @@ export { DISCORD_MAX_LENGTH, splitMessage } from "./domain/reply-split.ts";
 export { type StartOptions, startBot } from "./start.ts";
 export { type ToolCtx, textResult, toolsFor } from "./tools/index.ts";
 export { createWebHandler, startDashboard, type WebDeps } from "./webapi.ts";
-export { LogBuffer, type LogRecord } from "./weblog.ts";
+export { LogBuffer } from "./adapters/out/log/log-buffer.ts";
