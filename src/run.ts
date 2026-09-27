@@ -5,7 +5,7 @@
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { startBot } from "./index.ts";
+import { startBot } from "./start.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dbPath = process.env["BOT_DB"] ?? join(root, "data", "bot.db");

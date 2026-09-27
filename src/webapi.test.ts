@@ -4,7 +4,8 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "bun:test";
 import { SqliteConfigStore } from "./adapters/out/sqlite/config-store.ts";
 import { migrate } from "./adapters/out/sqlite/db.ts";
-import { ChannelSessions, type SessionFactory } from "./sessions.ts";
+import { PiChatAgent } from "./adapters/out/pi-agent/pi-chat-agent.ts";
+import { type SessionFactory, SessionPool } from "./adapters/out/pi-agent/session-pool.ts";
 import { SqliteMemoryStore } from "./adapters/out/sqlite/memory-store.ts";
 import { SqliteSoulStore } from "./adapters/out/sqlite/soul-store.ts";
 import { Persona } from "./application/persona.ts";
@@ -39,7 +40,7 @@ function deps(password = ""): WebDeps & { db: DatabaseSync } {
 	return {
 		db,
 		config: new SqliteConfigStore(db),
-		sessions: new ChannelSessions(factory),
+		agent: new PiChatAgent({ pool: new SessionPool(factory), metrics: new SqliteMetrics(db), model: () => "" }),
 		log: new LogBuffer(() => undefined),
 		metrics: new SqliteMetrics(db),
 		webDir: "/nao-existe",

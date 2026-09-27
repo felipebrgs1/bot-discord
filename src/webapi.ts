@@ -15,18 +15,18 @@ import type { ConfigStore } from "./application/ports/config-store.ts";
 import type { Persona } from "./application/persona.ts";
 import type { LogFeed } from "./application/ports/log-feed.ts";
 import type { Logger } from "./application/ports/logger.ts";
-import type { MetricsQuery, MetricsSink, MetricsTotals } from "./application/ports/metrics.ts";
+import type { ChatAgent, ChatSessions } from "./application/ports/chat-agent.ts";
+import type { MetricsQuery, MetricsTotals } from "./application/ports/metrics.ts";
 import { roleOf } from "./domain/roles.ts";
-import type { ChannelSessions } from "./sessions.ts";
 import type { SoulStore } from "./application/ports/soul-store.ts";
 import { DEFAULT_SOUL } from "./domain/soul.ts";
 
 export interface WebDeps {
 	db: DatabaseSync;
 	config: ConfigStore;
-	sessions: ChannelSessions;
+	agent: ChatAgent & ChatSessions;
 	log: Logger & LogFeed;
-	metrics: MetricsSink & MetricsQuery;
+	metrics: MetricsQuery;
 	/** Diretório com o build do front (web/dist). */
 	webDir: string;
 	/** Senha do painel (DASHBOARD_PASSWORD); vazio = sem login. */
@@ -146,7 +146,7 @@ function emptyStats(): Record<string, unknown> {
 }
 
 export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: ServerResponse) => void {
-	const { db, config, sessions, log, metrics, webDir, password, souls, persona } = deps;
+	const { db, config, agent, log, metrics, webDir, password, souls, persona } = deps;
 
 	const authed = (req: IncomingMessage): boolean => {
 		if (!password) return true;
@@ -225,7 +225,7 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 
 		// ---- chat web (sessões próprias, prefixo web:) ----
 		if (path === "/api/chat/sessions" && method === "GET") {
-			const ids = sessions.keys().filter((k) => k.startsWith("web:"));
+			const ids = agent.conversations().filter((k) => k.startsWith("web:"));
 			const list = ids.map((key) => {
 				const id = key.slice(4);
 				const rows = db
@@ -267,7 +267,7 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 			const id = m[1] as string;
 			if (!SESSION_RE.test(id)) return err(res, 400, "sessão inválida");
 			const key = webKey(id);
-			sessions.remove(key);
+			agent.forget(key);
 			db.prepare("DELETE FROM messages WHERE channel_id = ?;").run(key);
 			res.writeHead(204);
 			res.end();
@@ -438,7 +438,7 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 				// A mente vigente mora nas souls: edita a padrão e derruba
 				// as sessões para a nova encarnar (vale na próxima resposta).
 				souls.save(DEFAULT_SOUL, body["personality"]);
-				for (const key of sessions.keys()) sessions.remove(key);
+				for (const key of agent.conversations()) agent.forget(key);
 			}
 			return json(res, 200, { saved: true, restart_required: true });
 		}
@@ -542,70 +542,32 @@ export function createWebHandler(deps: WebDeps): (req: IncomingMessage, res: Ser
 			db.prepare(
 				"INSERT INTO messages (channel_id, author_id, author_name, message_id, body, created_at) VALUES (?,?,?,?,?,?);",
 			).run(key, authorId, authorName, message_id, body, at);
-			const row = db.prepare("SELECT * FROM messages WHERE message_id = ?;").get(message_id) as unknown as MsgRow;
-			return row;
+			return db.prepare("SELECT * FROM messages WHERE message_id = ?;").get(message_id) as unknown as MsgRow;
 		};
 		try {
 			const userMsg = saveMsg("web", "você", content);
 			sse(res, "accepted", { message: toChatMessage(userMsg) });
-
 			const settings = config.all();
-			const role = roleOf(settings.dashboard.web_user_id, settings.discord.admin_ids);
+			const webUser = settings.dashboard.web_user_id;
 			const steps: { tool: string; args: string; output: string; duration_ms: number }[] = [];
-			const started = new Map<string, { tool: string; args: string; at: number }>();
-			const session = await sessions.get(key, role);
-			const unsub =
-				typeof (session as { subscribe?: unknown }).subscribe === "function"
-					? (session as unknown as { subscribe: (cb: (e: unknown) => void) => () => void }).subscribe(
-							(event: unknown) => {
-								const e = event as Record<string, unknown>;
-								if (e["type"] === "tool_execution_start" && typeof e["toolCallId"] === "string") {
-									started.set(e["toolCallId"], {
-										tool: String(e["toolName"] ?? "tool"),
-										args: JSON.stringify(e["args"] ?? {}).slice(0, 2000),
-										at: Date.now(),
-									});
-								} else if (e["type"] === "tool_execution_end" && typeof e["toolCallId"] === "string") {
-									const s = started.get(e["toolCallId"] as string);
-									started.delete(e["toolCallId"] as string);
-									const result = e["result"] as { content?: { type: string; text?: string }[] } | undefined;
-									const output = (result?.content ?? [])
-										.filter((b) => b.type === "text" && b.text)
-										.map((b) => String(b.text))
-										.join("\n")
-										.slice(0, 4000);
-									const step = {
-										tool: String(e["toolName"] ?? s?.tool ?? "tool"),
-										args: s?.args ?? "{}",
-										output,
-										duration_ms: s ? Date.now() - s.at : 0,
-									};
-									steps.push(step);
-									try {
-										sse(res, "step", step);
-									} catch {
-										/* cliente foi embora */
-									}
-								}
-							},
-						)
-					: () => undefined;
-			let answer: string;
-			try {
-				const systemExtra = persona.systemPromptFor(key, settings.dashboard.web_user_id);
-				answer = await sessions.ask(key, role, content, {
-					source: "web",
-					model: settings.chat.model,
-					systemExtra: systemExtra || undefined,
-					onTurn: (r) => metrics.record(r),
-				});
-			} finally {
-				try {
-					unsub();
-				} catch {
-					/* ignore */
-				}
-			}
+			const answer = await agent.ask({
+				channelId: key,
+				authorId: webUser,
+				role: roleOf(webUser, settings.discord.admin_ids),
+				text: content,
+				images: [],
+				source: "web",
+				systemPrompt: persona.systemPromptFor(key, webUser),
+				onToolStep: (s) => {
+					const step = { tool: s.tool, args: s.args, output: s.output, duration_ms: s.durationMs };
+					steps.push(step);
+					try {
+						sse(res, "step", step);
+					} catch {
+						/* cliente foi embora */
+					}
+				},
+			});
 			const botMsg = saveMsg("bot", "bot", answer);
 			sse(res, "done", { message: toChatMessage(botMsg), steps });
 		} catch (e: unknown) {

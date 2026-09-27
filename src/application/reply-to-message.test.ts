@@ -14,6 +14,7 @@ function setup(settings: Partial<ReplySettings> = {}) {
 		clock,
 		logger,
 		settings: () => ({ cooldownMs: 0, adminIds: [], ...settings }),
+		systemPromptFor: (channelId, authorId) => `persona ${channelId}/${authorId}`,
 	});
 	return { agent, clock, logger, replies };
 }
@@ -43,7 +44,15 @@ describe("ReplyToMessage: resposta", () => {
 		expect(replies.submit(msg({ text: "tudo bem?", images: [image] }), target)).toBe(true);
 		await replies.idle();
 		expect(agent.requests).toEqual([
-			{ channelId: "c1", authorId: "u1", role: "user", text: "tudo bem?", images: [image] },
+			{
+				channelId: "c1",
+				authorId: "u1",
+				role: "user",
+				text: "tudo bem?",
+				images: [image],
+				source: "discord",
+				systemPrompt: "persona c1/u1",
+			},
 		]);
 		expect(target.delivered).toEqual([["eco: tudo bem?"]]);
 		expect(target.events).toEqual(["working:start", "working:end", "deliver"]);

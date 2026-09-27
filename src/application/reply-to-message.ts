@@ -38,6 +38,8 @@ export interface ReplyDeps {
 	clock: Clock;
 	logger: Logger;
 	settings: () => ReplySettings;
+	/** Soul + familiaridade (Persona). */
+	systemPromptFor: (channelId: string, authorId: string) => string;
 }
 
 const MAX_WAITING = 8;
@@ -101,7 +103,10 @@ export class ReplyToMessage {
 		const role = roleOf(message.authorId, settings.adminIds);
 		logger.info(`resposta canal=${message.channelId} role=${role} len=${message.text.length}`);
 		try {
-			const answer = await target.whileWorking(() => agent.ask({ ...message, role }));
+			const systemPrompt = this.deps.systemPromptFor(message.channelId, message.authorId);
+			const answer = await target.whileWorking(() =>
+				agent.ask({ ...message, role, source: "discord", systemPrompt }),
+			);
 			logger.info(`resposta ok canal=${message.channelId} len=${answer.length}`);
 			this.lastReply.set(message.channelId, clock.now());
 			await target.deliver(splitMessage(answer));

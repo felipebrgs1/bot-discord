@@ -1,171 +1,137 @@
 /**
- * Composition root: db → config → sessions → gateway (+ dashboard).
- *
- * Secrets come from the environment only (DISCORD_TOKEN, optional
- * DASHBOARD_PASSWORD); everything else lives in SQLite with code defaults.
+ * Composition root: le o ambiente, instancia adapters, injeta nos casos de
+ * uso e sobe Discord, consolidacao e painel. Segredos so do ambiente.
  */
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
+import { DiscordGateway } from "./adapters/in/discord/gateway.ts";
+import { botTools } from "./adapters/in/pi-tools/bot-tools.ts";
+import { startConsolidationLoop } from "./adapters/in/scheduler/consolidation-loop.ts";
 import { systemClock } from "./adapters/out/clock/system-clock.ts";
-import type { ChatAgent } from "./application/ports/chat-agent.ts";
-import type { Logger } from "./application/ports/logger.ts";
-import { ReplyToMessage } from "./application/reply-to-message.ts";
+import { FsOutbox } from "./adapters/out/fs/outbox.ts";
+import { ChatJsonExtractor } from "./adapters/out/llm/chat-json-extractor.ts";
+import { LogBuffer } from "./adapters/out/log/log-buffer.ts";
+import { PiChatAgent } from "./adapters/out/pi-agent/pi-chat-agent.ts";
+import { piSessionFactory, SessionPool } from "./adapters/out/pi-agent/session-pool.ts";
 import { SqliteConfigStore } from "./adapters/out/sqlite/config-store.ts";
 import { openDatabase } from "./adapters/out/sqlite/db.ts";
-import { DiscordGateway } from "./gateway.ts";
-import { startConsolidationLoop } from "./adapters/in/scheduler/consolidation-loop.ts";
-import { ChatJsonExtractor } from "./adapters/out/llm/chat-json-extractor.ts";
 import { SqliteMemoryStore } from "./adapters/out/sqlite/memory-store.ts";
 import { SqliteMessageStore } from "./adapters/out/sqlite/message-store.ts";
-import { ConsolidateMemory } from "./application/consolidate-memory.ts";
-import { MessageLog } from "./application/message-log.ts";
-import { Persona } from "./application/persona.ts";
-import { LogBuffer } from "./adapters/out/log/log-buffer.ts";
 import { SqliteMetrics } from "./adapters/out/sqlite/metrics.ts";
 import { SqliteSoulStore } from "./adapters/out/sqlite/soul-store.ts";
-
-const DEFAULT_SOUL_FALLBACK = "Você é um amigo do servidor: direto, bem-humorado, fala PT-BR.";
-
-import { roleOf } from "./domain/roles.ts";
-import { ChannelSessions, piSessionFactory } from "./sessions.ts";
-import { listaJogo } from "./tools/skidrow.ts";
+import { DnsHostGuard } from "./adapters/out/web/host-guard.ts";
+import { HttpPageFetcher } from "./adapters/out/web/http-fetcher.ts";
+import { NewsWikiSearch } from "./adapters/out/web/news-wiki-search.ts";
+import { SkidrowCatalog } from "./adapters/out/web/skidrow-catalog.ts";
+import { YtDlpDownloader } from "./adapters/out/ytdlp/ytdlp-downloader.ts";
+import { ConsolidateMemory } from "./application/consolidate-memory.ts";
+import { DownloadImages } from "./application/download-images.ts";
+import { DownloadMedia } from "./application/download-media.ts";
+import { MessageLog } from "./application/message-log.ts";
+import { OutboxDelivery } from "./application/outbox-delivery.ts";
+import { Persona } from "./application/persona.ts";
+import { Recall } from "./application/recall.ts";
+import { ReplyToMessage } from "./application/reply-to-message.ts";
+import { SearchGames } from "./application/search-games.ts";
+import { TextCommands } from "./application/text-commands.ts";
+import { WebResearch } from "./application/web-research.ts";
 import { startDashboard } from "./webapi.ts";
 
-export interface StartOptions {
-	dbPath: string;
-	cwd?: string;
-	/** Porta do painel; 0 = desligado. Padrão: DASHBOARD_PORT ou 8080. */
-	dashboardPort?: number;
-	dashboardHost?: string;
-	/** Diretório com o build do front (web/dist). */
-	webDir?: string;
-}
+const DEFAULT_SOUL_FALLBACK = "Você é um amigo do servidor: direto, bem-humorado, fala PT-BR.";
+/** Instalado pelo setup do bot Go; YTDLP_BIN tem precedencia. */
+const DEFAULT_YTDLP = "/home/ubuntu/bot/botdiscord/bin/yt-dlp";
 
 /** Segredo so do ambiente; nunca do banco. */
 const secret = (name: string): string => process.env[name] ?? "";
 
-export async function startBot(options: StartOptions): Promise<() => Promise<void>> {
-	// Secrets live in .env at the repo root (gitignored) — never in SQLite.
-	loadEnv({ path: join(dirname(fileURLToPath(import.meta.url)), "..", ".env") });
+export interface StartOptions {
+	dbPath: string;
+	cwd?: string;
+	/** Porta do painel; 0 = desligado. Padrao: DASHBOARD_PORT ou 8080. */
+	dashboardPort?: number;
+	dashboardHost?: string;
+	/** Diretorio com o build do front (web/dist). */
+	webDir?: string;
+}
 
+export async function startBot(options: StartOptions): Promise<() => Promise<void>> {
+	const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+	loadEnv({ path: join(root, ".env") });
+
+	// Adapters de saida
 	const log = new LogBuffer();
-	const emit = (msg: string, attrs?: Record<string, unknown>): void => log.log("info", msg, attrs);
 	const db = openDatabase(options.dbPath);
 	const config = new SqliteConfigStore(db);
-	const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-	const sessions = new ChannelSessions(
-		piSessionFactory(options.cwd ?? process.cwd(), {
-			db,
-			log,
-			outboxDir: join(root, "outbox"),
-		}),
-	);
 	const souls = new SqliteSoulStore(db);
 	souls.ensureSeed(config.all().bot.personality || DEFAULT_SOUL_FALLBACK);
 	const messages = new SqliteMessageStore(db);
 	const memories = new SqliteMemoryStore(db);
-	const persona = new Persona(souls, memories);
-
-	const logger: Logger = log;
 	const metrics = new SqliteMetrics(db);
-	const messageLog = new MessageLog(messages, logger);
+	const guard = new DnsHostGuard({ allowPrivate: process.env["AGENT_ALLOW_PRIVATE"] === "1" });
+	const fetcher = new HttpPageFetcher({ guard });
+	const outbox = new FsOutbox(join(root, "outbox"));
 
-	// ChatAgent provisorio: sessoes do pi + soul + familiaridade (vira adapter pi-agent).
-	const agent: ChatAgent = {
-		ask: ({ channelId, authorId, role, text, images }) => {
-			const systemExtra = persona.systemPromptFor(channelId, authorId);
-			return sessions.ask(channelId, role, text, {
-				source: "discord",
-				model: config.all().chat.model,
-				systemExtra: systemExtra || undefined,
-				images: images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType })),
-				onTurn: (r) => metrics.record(r),
-			});
-		},
+	// Casos de uso
+	const persona = new Persona(souls, memories);
+	const games = new SearchGames(new SkidrowCatalog(fetcher));
+	const tools = {
+		research: new WebResearch(new NewsWikiSearch(fetcher), fetcher),
+		media: new DownloadMedia(new YtDlpDownloader(secret("YTDLP_BIN") || DEFAULT_YTDLP, outbox), guard, log),
+		recall: new Recall(messages, memories),
+		games,
 	};
+	const pool = new SessionPool(
+		piSessionFactory(options.cwd ?? process.cwd(), (conversationId) => botTools(tools, conversationId)),
+	);
+	const agent = new PiChatAgent({ pool, metrics, model: () => config.all().chat.model });
 	const replies = new ReplyToMessage({
 		agent,
 		clock: systemClock,
-		logger,
+		logger: log,
 		settings: () => {
 			const s = config.all();
 			return { cooldownMs: s.bot.reply_cooldown_ms, adminIds: s.discord.admin_ids };
 		},
+		systemPromptFor: (channelId, authorId) => persona.systemPromptFor(channelId, authorId),
 	});
 
+	// Adapters de entrada
 	const gateway = new DiscordGateway({
-		settings: () => config.all(),
+		config,
 		replies,
-		onReady: (tag) => log.log("info", `logado no Discord como ${tag}`),
-		emit,
-		onCommand: async ({ channelId, authorId, text, reply }) => {
-			const raw = text.trim();
-			const cmd = raw.split(/\s+/);
-			if (cmd[0] === "!lista" || cmd[0] === "/lista") {
-				const jogo = raw.slice(cmd[0].length).trim();
-				if (!jogo) {
-					await reply("uso: /lista nome do jogo (ex.: /lista the sims)");
-					return true;
-				}
-				try {
-					await reply(await listaJogo(jogo));
-				} catch (err) {
-					await reply(`não rolou: ${err instanceof Error ? err.message : String(err)}`);
-				}
-				return true;
-			}
-			if (cmd[0] !== "!soul" && cmd[0] !== "!souls") return false;
-			if (roleOf(authorId, config.all().discord.admin_ids) !== "admin") {
-				await reply("só o dono troca a mente do bot.");
-				return true;
-			}
-			if (cmd[0] === "!souls" || cmd.length < 2) {
-				const names =
-					souls
-						.list()
-						.map((x) => x.name)
-						.join(", ") || "(nenhuma)";
-				await reply(`souls: ${names} | aqui: ${souls.channelSoul(channelId)}`);
-				return true;
-			}
-			try {
-				souls.setChannel(channelId, cmd[1] as string);
-				sessions.remove(channelId);
-				await reply(`mente trocada: agora sou **${cmd[1]}** neste canal.`);
-			} catch (err) {
-				await reply(`não rolou: ${err instanceof Error ? err.message : String(err)}`);
-			}
-			return true;
-		},
-		outboxDir: join(root, "outbox"),
-		persist: (m) => messageLog.record(m),
+		commands: new TextCommands({ games, souls, sessions: agent, adminIds: () => config.all().discord.admin_ids }),
+		games,
+		images: new DownloadImages(fetcher),
+		outbox: new OutboxDelivery(outbox, log),
+		history: new MessageLog(messages, log),
+		logger: log,
+		clock: systemClock,
 	});
 
 	const chatKey = secret("CHAT_API_KEY") || secret("OPENCODE_API_KEY");
-	const all = config.all();
+	const boot = config.all();
 	const stopConsolidation =
-		chatKey && all.chat.model
+		chatKey && boot.chat.model
 			? startConsolidationLoop(
 					new ConsolidateMemory({
 						messages,
 						memories,
-						logger,
-						extractor: new ChatJsonExtractor({ baseUrl: all.chat.base_url, apiKey: chatKey, model: all.chat.model }),
+						logger: log,
+						extractor: new ChatJsonExtractor({ baseUrl: boot.chat.base_url, apiKey: chatKey, model: boot.chat.model }),
 					}),
 					{
 						channels: () => config.all().discord.channel_ids,
-						batchSize: all.memory.batch_size,
-						intervalMs: all.memory.interval_ms,
+						batchSize: boot.memory.batch_size,
+						intervalMs: boot.memory.interval_ms,
 					},
 				)
 			: undefined;
-	if (!chatKey) log.log("warn", "sem CHAT_API_KEY/OPENCODE_API_KEY: consolidação desligada");
+	if (!chatKey) log.warn("sem CHAT_API_KEY/OPENCODE_API_KEY: consolidação desligada");
 
 	const token = secret("DISCORD_TOKEN");
 	if (!token) throw new Error("DISCORD_TOKEN não definido no ambiente");
-
 	await gateway.start(token);
 
 	const port = options.dashboardPort ?? (process.env["DASHBOARD_PORT"] ? Number(process.env["DASHBOARD_PORT"]) : 8080);
@@ -175,18 +141,18 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 			{
 				db,
 				config,
-				sessions,
+				agent,
 				log,
+				metrics,
 				webDir: options.webDir ?? join(root, "web", "dist"),
 				password: secret("DASHBOARD_PASSWORD"),
 				souls,
 				persona,
-				metrics,
 			},
 			port,
 			options.dashboardHost ?? "127.0.0.1",
 		);
-		log.log("info", `painel em http://127.0.0.1:${port}`);
+		log.info(`painel em http://127.0.0.1:${port}`);
 	}
 
 	let stopping = false;
@@ -197,7 +163,7 @@ export async function startBot(options: StartOptions): Promise<() => Promise<voi
 		config.dispose();
 		replies.stop();
 		await gateway.stop();
-		sessions.dispose();
+		pool.dispose();
 		if (server) await new Promise<void>((r) => server?.close(() => r()));
 		db.close();
 	};
