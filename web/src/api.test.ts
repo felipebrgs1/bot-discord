@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { fetchDiscordConfig, sendChat } from "./api";
 
 function sseResponse(frames: string[]): Response {
@@ -12,22 +12,29 @@ function sseResponse(frames: string[]): Response {
 	return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
 }
 
+const restores: Array<() => void> = [];
+
+function stubFetch(impl: (url: unknown, init?: { signal?: AbortSignal }) => Promise<Response>): void {
+	const original = globalThis.fetch;
+	globalThis.fetch = impl as typeof fetch;
+	restores.push(() => {
+		globalThis.fetch = original;
+	});
+}
+
 afterEach(() => {
-	vi.unstubAllGlobals();
+	while (restores.length > 0) restores.pop()?.();
 });
 
 describe("sendChat", () => {
 	it("dispara accepted/step/done em ordem", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () =>
+		stubFetch(async () =>
 				sseResponse([
 					`event: accepted\ndata: {"message":{"id":"u1","content":"oi"}}\n\n`,
 					`event: step\ndata: {"tool":"web_search","args":"{}","output":"achado","duration_ms":12}\n\n`,
 					`event: done\ndata: {"message":{"id":"b1","content":"resposta","is_bot":true},"steps":[]}\n\n`,
 				]),
-			),
-		);
+			);
 		const seen: string[] = [];
 		let doneMsg = "";
 		await sendChat("s1", "oi", {
@@ -43,17 +50,15 @@ describe("sendChat", () => {
 	});
 
 	it("quadro malformado não derruba o fluxo", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () =>
+		stubFetch(async () =>
 				sseResponse([
 					`event: step\ndata: NÃO-É-JSON\n\n`,
 					`event: done\ndata: {"message":{"id":"b1","content":"fim"},"steps":[]}\n\n`,
 				]),
-			),
-		);
+			);
 		const warned: unknown[][] = [];
-		vi.stubGlobal("console", { ...console, warn: (...a: unknown[]) => void warned.push(a) });
+		const warn = spyOn(console, "warn").mockImplementation((...a: unknown[]) => void warned.push(a));
+		restores.push(() => warn.mockRestore());
 		let doneMsg = "";
 		await sendChat("s1", "oi", {
 			onDone: (m) => {
@@ -66,10 +71,7 @@ describe("sendChat", () => {
 	});
 
 	it("erro HTTP vira onError com a mensagem do servidor", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => new Response(JSON.stringify({ error: "sessão cheia" }), { status: 429 })),
-		);
+		stubFetch(async () => new Response(JSON.stringify({ error: "sessão cheia" }), { status: 429 }));
 		let err = "";
 		await sendChat("s1", "oi", {
 			onDone: () => {},
@@ -81,10 +83,7 @@ describe("sendChat", () => {
 	});
 
 	it("evento error do SSE vira onError", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => sseResponse([`event: error\ndata: {"message":"modelo caiu"}\n\n`])),
-		);
+		stubFetch(async () => sseResponse([`event: error\ndata: {"message":"modelo caiu"}\n\n`]));
 		let err = "";
 		await sendChat("s1", "oi", {
 			onDone: () => {},
@@ -96,15 +95,12 @@ describe("sendChat", () => {
 	});
 
 	it("abort não chama onError", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (_u: unknown, init?: { signal?: AbortSignal }) => {
+		stubFetch(async (_u: unknown, init?: { signal?: AbortSignal }) => {
 				await new Promise((_, rej) => {
 					init?.signal?.addEventListener("abort", () => rej(new DOMException("x", "AbortError")));
 				});
 				throw new Error("unreachable");
-			}),
-		);
+			});
 		const ctl = new AbortController();
 		let err = "nada";
 		const p = sendChat("s1", "oi", {
@@ -122,13 +118,10 @@ describe("sendChat", () => {
 
 describe("fetchDiscordConfig", () => {
 	it("tolerância a forma parcial (novo backend)", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(
+		stubFetch(
 				async () =>
 					new Response(JSON.stringify({ guild_id: "g" }), { status: 200 }),
-			),
-		);
+			);
 		// Contrato atual exige os campos; se o backend mandar parcial,
 		// o erro deve ser explícito, não undefined silencioso.
 		const cfg = await fetchDiscordConfig().catch((e: Error) => e.message);

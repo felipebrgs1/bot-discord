@@ -134,7 +134,7 @@ bun run check                      # tsc --noEmit (TypeScript 7)
 bun test                           # src/ (bunfig.toml)
 bun test src/caminho.test.ts
 bun test -t "nome do teste"
-bun run --cwd web test             # painel: vitest
+bun run --cwd web test             # painel: bun test
 bun start                          # bun src/main/run.ts
 ```
 
