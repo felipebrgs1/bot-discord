@@ -14,7 +14,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6;
 
 interface Migration {
 	version: number;
@@ -248,6 +248,14 @@ CREATE INDEX memory_versions_memory ON memory_versions(memory_id);
 
 -- Fala de bot nao vira fato na consolidacao.
 ALTER TABLE messages ADD COLUMN from_bot INTEGER NOT NULL DEFAULT 0;
+`,
+	},
+	{
+		version: 6,
+		name: "messages-bot-index",
+		sql: `
+-- Conversa desde a ultima fala do bot (texto do turno).
+CREATE INDEX messages_channel_bot ON messages(channel_id, from_bot, rowid);
 `,
 	},
 ];

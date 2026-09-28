@@ -8,4 +8,6 @@ export interface MessageStore {
 	deleteChannel(channelId: string): void;
 	/** Mensagens com seq > afterSeq, mais antigas primeiro. */
 	after(channelId: string, afterSeq: number, limit: number): StoredMessage[];
+	/** Ate `limit` mensagens mais novas depois da ultima fala de bot, antigas primeiro. */
+	sinceLastBotMessage(channelId: string, limit: number): StoredMessage[];
 }

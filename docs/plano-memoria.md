@@ -4,6 +4,12 @@ Objetivo: o bot aprender com o grupo aos poucos, no estilo do Hermes Agent, sem 
 
 Hoje o bot ja tem o equivalente da revisao em background do Hermes (consolidacao a cada 90s) e da busca em sessoes antigas (`search_history`). O que falta: curadoria do que ja foi aprendido, saber quem esta falando e aprender na hora.
 
+## Andamento
+
+- Fase 0: feita.
+- Fase 1: feita. Diferencas do plano: o cabecalho do turno nao tem hora (o dominio nao conhece fuso); `ChatRequest` nao mudou, o texto do turno ja chega pronto; no painel quem fala aparece como "painel".
+- Fases 2 a 5: pendentes.
+
 ## O que vale copiar do Hermes
 
 - **Memoria curta e com limite, sempre no prompt:** `MEMORY.md` (~2200 chars) e `USER.md` (~1375 chars). Quando enche, o agente junta ou apaga entradas em vez de acumular.

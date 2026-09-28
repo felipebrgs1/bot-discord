@@ -12,11 +12,15 @@ import { splitMessage } from "../domain/reply-split.ts";
 import { roleOf } from "../domain/roles.ts";
 import type { ChatAgent } from "./ports/chat-agent.ts";
 import type { Clock } from "./ports/clock.ts";
+import type { Turn } from "./persona.ts";
 import type { Logger } from "./ports/logger.ts";
 
 export interface IncomingMessage {
 	channelId: string;
 	authorId: string;
+	/** Nome de exibicao de quem fala. */
+	authorName: string;
+	messageId: string;
 	text: string;
 	images: readonly ImageData[];
 }
@@ -38,8 +42,10 @@ export interface ReplyDeps {
 	clock: Clock;
 	logger: Logger;
 	settings: () => ReplySettings;
-	/** Soul + familiaridade (Persona). */
-	systemPromptFor: (channelId: string, authorId: string) => string;
+	/** Soul + memoria do grupo (Persona): vale na criacao da sessao do canal. */
+	systemPromptFor: (channelId: string) => string;
+	/** Texto do turno: quem fala, o que o bot sabe dela, conversa recente (Persona). */
+	turnText: (turn: Turn) => string;
 }
 
 const MAX_WAITING = 8;
@@ -103,9 +109,18 @@ export class ReplyToMessage {
 		const role = roleOf(message.authorId, settings.adminIds);
 		logger.info(`resposta canal=${message.channelId} role=${role} len=${message.text.length}`);
 		try {
-			const systemPrompt = this.deps.systemPromptFor(message.channelId, message.authorId);
+			const systemPrompt = this.deps.systemPromptFor(message.channelId);
+			const text = this.deps.turnText(message);
 			const answer = await target.whileWorking(() =>
-				agent.ask({ ...message, role, source: "discord", systemPrompt }),
+				agent.ask({
+					channelId: message.channelId,
+					authorId: message.authorId,
+					role,
+					text,
+					images: message.images,
+					source: "discord",
+					systemPrompt,
+				}),
 			);
 			logger.info(`resposta ok canal=${message.channelId} len=${answer.length}`);
 			this.lastReply.set(message.channelId, clock.now());

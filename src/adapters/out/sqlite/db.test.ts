@@ -11,7 +11,7 @@ function memDb(): DatabaseSync {
 describe("migrations", () => {
 	it("applies all migrations and reports the version", () => {
 		const db = memDb();
-		expect(schemaVersion(db)).toBe(5);
+		expect(schemaVersion(db)).toBe(6);
 		const tables = db
 			.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','trigger') ORDER BY name;")
 			.all() as { name: string }[];
@@ -37,6 +37,8 @@ describe("migrations", () => {
 		]) {
 			expect(names.has(t), `missing ${t}`).toBe(true);
 		}
+		const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index';").all() as { name: string }[];
+		expect(indexes.map((i) => i.name)).toContain("messages_channel_bot");
 		const cacheCols = db.prepare("SELECT name FROM pragma_table_info('ai_requests');").all() as { name: string }[];
 		const cacheNames = new Set(cacheCols.map((c) => c.name));
 		expect(cacheNames.has("cached_tokens")).toBe(true);
@@ -47,7 +49,7 @@ describe("migrations", () => {
 	it("is idempotent", () => {
 		const db = memDb();
 		migrate(db);
-		expect(schemaVersion(db)).toBe(5);
+		expect(schemaVersion(db)).toBe(6);
 		db.close();
 	});
 

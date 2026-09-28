@@ -42,6 +42,12 @@ export class FakeMessageStore implements MessageStore, HistorySearch {
 			.slice(0, limit);
 	}
 
+	sinceLastBotMessage(channelId: string, limit: number): StoredMessage[] {
+		const all = this.channel(channelId);
+		const lastBot = all.findLastIndex((m) => m.fromBot);
+		return all.slice(lastBot + 1).slice(-limit);
+	}
+
 	search(query: HistoryQuery): HistoryHit[] {
 		const text = query.text ?? "";
 		let pool = this.channel(query.channelId).filter((m) => !query.authorId || m.authorId === query.authorId);

@@ -63,6 +63,22 @@ export function messageStoreContract(make: () => MessageStore): void {
 		expect(store.after("c1", first?.seq ?? 0, 10).map((m) => m.body)).toEqual(["b", "c"]);
 		expect(store.after("c1", 0, 2).map((m) => m.body)).toEqual(["a", "b"]);
 	});
+
+	it("sinceLastBotMessage traz o que veio depois da ultima fala de bot no canal", () => {
+		const store = make();
+		store.append(msg({ messageId: "m1", body: "antes" }));
+		store.append(msg({ messageId: "m2", authorId: "bot", body: "resposta", fromBot: true }));
+		store.append(msg({ messageId: "m3", body: "depois 1" }));
+		store.append(msg({ messageId: "m4", body: "outro canal", channelId: "c2" }));
+		store.append(msg({ messageId: "m5", body: "depois 2" }));
+		expect(store.sinceLastBotMessage("c1", 10).map((m) => m.body)).toEqual(["depois 1", "depois 2"]);
+	});
+
+	it("sinceLastBotMessage sem fala de bot traz as mais novas ate o limite", () => {
+		const store = make();
+		for (const i of [1, 2, 3]) store.append(msg({ messageId: `m${i}`, body: `m${i}` }));
+		expect(store.sinceLastBotMessage("c1", 2).map((m) => m.body)).toEqual(["m2", "m3"]);
+	});
 }
 
 export function historySearchContract(make: () => MessageStore & HistorySearch): void {

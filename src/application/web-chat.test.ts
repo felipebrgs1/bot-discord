@@ -29,7 +29,7 @@ function setup(answer: (r: ChatRequest) => Promise<string> = async () => "respos
 		messages,
 		agent,
 		config: new FakeConfigStore({ discord: { admin_ids: ["dono"] }, dashboard: { web_user_id: "dono" } }),
-		persona: new Persona(souls, new FakeMemoryStore()),
+		persona: new Persona(souls, new FakeMemoryStore(), messages),
 		clock: new FakeClock(Date.parse("2026-09-27T12:00:00.000Z")),
 		newId: () => `web-${++n}`,
 	});
@@ -60,7 +60,7 @@ describe("WebChat.send", () => {
 			channelId: "web:s1",
 			authorId: "dono",
 			role: "admin",
-			text: "oi",
+			text: "[mensagem de painel (id dono)]\noi",
 			images: [],
 			source: "web",
 			systemPrompt: "sou o bot",
@@ -69,6 +69,14 @@ describe("WebChat.send", () => {
 			["web", "você", "2026-09-27T12:00:00.000Z"],
 			["bot", "bot", "2026-09-27T12:00:00.000Z"],
 		]);
+	});
+
+	it("resposta gravada como do bot: turno seguinte nao repete a conversa", async () => {
+		const { chat, asked, messages } = setup();
+		await chat.send("s1", "oi", noEvents);
+		await chat.send("s1", "e ai?", noEvents);
+		expect(messages.messages.map((m) => m.fromBot)).toEqual([false, true, false, true]);
+		expect(asked[1]?.text).toBe("[mensagem de painel (id dono)]\ne ai?");
 	});
 
 	it("erro do agente propaga e nao grava resposta", async () => {

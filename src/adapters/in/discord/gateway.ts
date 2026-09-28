@@ -221,12 +221,15 @@ export class DiscordGateway {
 		// URLs primeiro (barato): propria + respondida; download so se disparar.
 		const direct = mergeUrls(collectImageUrls(valuesOf(m.attachments), valuesOf(m.stickers)), await referencedImageUrls(m));
 		this.rememberImages(m.channelId, direct);
+		// Apelido no servidor > nome global > username; mencoes como @nome (nao <@id>).
+		const authorName = m.member?.displayName ?? m.author.globalName ?? m.author.username;
+		const content = m.cleanContent;
 		history.record({
 			channelId: m.channelId,
 			authorId: m.author.id,
-			authorName: m.author.username,
+			authorName,
 			messageId: m.id,
-			body: `${m.content ?? ""}${direct.length > 0 ? " [imagem]" : ""}`,
+			body: `${content}${direct.length > 0 ? " [imagem]" : ""}`,
 			replyTo: m.reference?.messageId,
 			fromBot: m.author.bot,
 		});
@@ -249,13 +252,14 @@ export class DiscordGateway {
 		const urls = mergeUrls([...direct], this.fresh(this.channelImages, m.channelId, RECENT_IMAGE_TTL_MS)?.urls ?? []);
 		if (urls.length === 0) mergeUrls(urls, await channelHistoryImageUrls(m));
 		const downloaded: ImageData[] = await images.run(urls).catch(() => []);
-		const text = m.content || (downloaded.length > 0 ? "(imagem anexada)" : "");
+		const text = content || (downloaded.length > 0 ? "(imagem anexada)" : "");
 		const target = discordReplyTarget(m, this.botUserId, () =>
 			this.deps.outbox.deliver(m.channelId, async (path) => {
 				await m.channel.send({ files: [{ attachment: path }] });
 			}),
 		);
-		if (!replies.submit({ channelId: m.channelId, authorId: m.author.id, text, images: downloaded }, target)) {
+		const incoming = { channelId: m.channelId, authorId: m.author.id, authorName, messageId: m.id, text, images: downloaded };
+		if (!replies.submit(incoming, target)) {
 			logger.warn(`fila cheia canal=${m.channelId}: mensagem descartada`);
 		}
 	}

@@ -91,7 +91,7 @@ export function compose(opts: ComposeOptions) {
 	const outbox = new FsOutbox(join(opts.root, "outbox"));
 
 	// Casos de uso
-	const persona = new Persona(souls, memories);
+	const persona = new Persona(souls, memories, messages);
 	const games = new SearchGames(new SkidrowCatalog(fetcher));
 	const tools = {
 		research: new WebResearch(new NewsWikiSearch(fetcher), fetcher),
@@ -111,7 +111,8 @@ export function compose(opts: ComposeOptions) {
 			const s = config.all();
 			return { cooldownMs: s.bot.reply_cooldown_ms, adminIds: s.discord.admin_ids };
 		},
-		systemPromptFor: (channelId, authorId) => persona.systemPromptFor(channelId, authorId),
+		systemPromptFor: (channelId) => persona.systemPromptFor(channelId),
+		turnText: (turn) => persona.turnText(turn),
 	});
 	const panel = new Panel({ config, souls, sessions: agent, memories, metrics, logs: log });
 	const webChat = new WebChat({

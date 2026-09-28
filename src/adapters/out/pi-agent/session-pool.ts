@@ -87,6 +87,7 @@ export function piSessionFactory(
 
 interface Entry {
 	session: AgentSession;
+	createdAt: number;
 	lastUsed: number;
 }
 
@@ -95,11 +96,19 @@ export class SessionPool {
 	private readonly factory: SessionFactory;
 	private readonly idleMs: number;
 	private readonly now: () => number;
+	/** Mesmo em uso, a sessao e recriada: o prompt (soul + memoria do grupo) atualiza. */
+	private readonly maxAgeMs: number;
 
-	constructor(factory: SessionFactory, idleMs = 30 * 60 * 1000, now: () => number = Date.now) {
+	constructor(
+		factory: SessionFactory,
+		idleMs = 30 * 60 * 1000,
+		now: () => number = Date.now,
+		maxAgeMs = 3 * 60 * 60 * 1000,
+	) {
 		this.factory = factory;
 		this.idleMs = idleMs;
 		this.now = now;
+		this.maxAgeMs = maxAgeMs;
 	}
 
 	/** Sessao da conversa+papel; o prompt extra so vale se for criada agora. */
@@ -112,7 +121,7 @@ export class SessionPool {
 			return existing.session;
 		}
 		const session = await this.factory.create(conversationId, role, systemPrompt);
-		this.entries.set(key, { session, lastUsed: this.now() });
+		this.entries.set(key, { session, createdAt: this.now(), lastUsed: this.now() });
 		return session;
 	}
 
@@ -149,7 +158,7 @@ export class SessionPool {
 	private sweep(): void {
 		const now = this.now();
 		for (const [key, e] of this.entries) {
-			if (now - e.lastUsed > this.idleMs) {
+			if (now - e.lastUsed > this.idleMs || now - e.createdAt > this.maxAgeMs) {
 				this.factory.dispose(e.session);
 				this.entries.delete(key);
 			}

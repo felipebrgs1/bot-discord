@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "bun:test";
 import { DownloadImages } from "../../../application/download-images.ts";
 import { MessageLog } from "../../../application/message-log.ts";
 import { OutboxDelivery } from "../../../application/outbox-delivery.ts";
+import type { Turn } from "../../../application/persona.ts";
 import type { ChatRequest } from "../../../application/ports/chat-agent.ts";
 import type { GameCatalog } from "../../../application/ports/game-catalog.ts";
 import { ReplyToMessage } from "../../../application/reply-to-message.ts";
@@ -39,6 +40,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string } = {}) {
 	const logger = new FakeLogger();
 	const config = new FakeConfigStore({ discord: { guild_id: opts.guild ?? "g1", channel_ids: ["c1"], admin_ids: ["dono"] } });
 	const asked: ChatRequest[] = [];
+	const turns: Turn[] = [];
 	const replies = new ReplyToMessage({
 		agent: {
 			ask: async (r) => {
@@ -50,6 +52,10 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string } = {}) {
 		logger,
 		settings: () => ({ cooldownMs: 0, adminIds: [] }),
 		systemPromptFor: () => "",
+		turnText: (turn) => {
+			turns.push(turn);
+			return turn.text;
+		},
 	});
 	const messages = new FakeMessageStore();
 	const outbox = new FakeOutbox();
@@ -83,7 +89,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string } = {}) {
 		await new Promise((r) => setTimeout(r, 10));
 		await replies.idle();
 	};
-	return { gw, clock, asked, messages, outbox, receive };
+	return { gw, clock, asked, turns, messages, outbox, receive };
 }
 
 function message(over: Record<string, unknown> = {}) {
@@ -109,7 +115,9 @@ function message(over: Record<string, unknown> = {}) {
 		},
 		...over,
 	};
-	return { m, events };
+	// discord.js: cleanContent troca <@id> por @nome; no teste, igual ao content se nao vier.
+	const withClean = { cleanContent: m.content, ...m };
+	return { m: withClean, events };
 }
 
 const mentioned = { mentions: { users: { size: 1 }, has: () => true } };
@@ -154,6 +162,28 @@ describe("mensagem", () => {
 			["m8", true],
 			["m9", false],
 		]);
+	});
+
+	it("turno leva nome de exibicao, id da mensagem e mencoes como @nome", async () => {
+		const { turns, messages, receive } = setup();
+		await receive(
+			message({
+				...mentioned,
+				id: "m5",
+				content: "<@bot> fala <@u2>",
+				cleanContent: "@elmatadore fala @Bruno",
+				member: { displayName: "Aninha" },
+			}).m,
+		);
+		expect(turns.map((t) => [t.authorName, t.messageId, t.text])).toEqual([["Aninha", "m5", "@elmatadore fala @Bruno"]]);
+		expect(messages.messages.map((x) => [x.authorName, x.body])).toEqual([["Aninha", "@elmatadore fala @Bruno"]]);
+	});
+
+	it("sem apelido no servidor usa o nome global e depois o username", async () => {
+		const { turns, receive } = setup();
+		await receive(message({ ...mentioned, id: "m6", author: { id: "u1", username: "ana", globalName: "Ana G", bot: false, system: false } }).m);
+		await receive(message({ ...mentioned, id: "m7" }).m);
+		expect(turns.map((t) => t.authorName)).toEqual(["Ana G", "ana"]);
 	});
 
 	it("toda mensagem elegivel vai pro historico, com marca de imagem", async () => {

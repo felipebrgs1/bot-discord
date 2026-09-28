@@ -35,6 +35,8 @@ export interface SendEvents {
 const SESSION_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const WEB_PREFIX = "web:";
 const MAX_HISTORY = 1000;
+/** Como o modelo chama quem fala pelo painel. */
+const WEB_AUTHOR = "painel";
 
 export class WebChat {
 	private readonly deps: WebChatDeps;
@@ -73,25 +75,40 @@ export class WebChat {
 		const { messages, agent, config, persona, clock, newId } = this.deps;
 		const conversation = WEB_PREFIX + id;
 		const at = new Date(clock.now()).toISOString();
-		const save = (authorId: string, authorName: string, body: string): StoredMessage => {
-			const stored = messages.append({ channelId: conversation, authorId, authorName, messageId: newId(), body, createdAt: at });
+		const save = (authorId: string, authorName: string, body: string, fromBot: boolean): StoredMessage => {
+			const stored = messages.append({
+				channelId: conversation,
+				authorId,
+				authorName,
+				messageId: newId(),
+				body,
+				createdAt: at,
+				fromBot,
+			});
 			if (!stored) throw new Error("mensagem duplicada");
 			return stored;
 		};
-		events.accepted(save("web", "você", content));
+		const question = save("web", "você", content, false);
+		events.accepted(question);
 		const settings = config.all();
 		const webUser = settings.dashboard.web_user_id;
 		const answer = await agent.ask({
 			channelId: conversation,
 			authorId: webUser,
 			role: roleOf(webUser, settings.discord.admin_ids),
-			text: content,
+			text: persona.turnText({
+				channelId: conversation,
+				authorId: webUser,
+				authorName: WEB_AUTHOR,
+				messageId: question.messageId,
+				text: content,
+			}),
 			images: [],
 			source: "web",
-			systemPrompt: persona.systemPromptFor(conversation, webUser),
+			systemPrompt: persona.systemPromptFor(conversation),
 			onToolStep: (step) => events.step(step),
 		});
-		return save("bot", "bot", answer);
+		return save("bot", "bot", answer, true);
 	}
 
 	remove(id: string): void {

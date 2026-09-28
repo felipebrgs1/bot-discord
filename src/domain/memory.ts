@@ -116,17 +116,54 @@ Mensagens:
 ${lines.join("\n")}`;
 }
 
-/** Bloco de familiaridade que entra em toda resposta ('' se nada). */
-export function familiarityText(
-	mine: readonly FamiliarMemory[],
-	group: readonly FamiliarMemory[],
-	maxChars = 1500,
-): string {
-	const lines = [
-		...mine.map((m) => `- [sua] (${m.kind}) ${m.content}`),
-		...group.map((m) => `- [grupo] (${m.kind}) ${m.content}`),
-	];
-	if (lines.length === 0) return "";
-	const text = `[memória do grupo e suas preferências]\n${lines.join("\n")}`;
-	return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+/** Linha da conversa recente do canal. */
+export interface RecentLine {
+	authorName: string;
+	body: string;
+}
+
+export interface TurnInput {
+	authorId: string;
+	authorName: string;
+	text: string;
+	/** Memorias da pessoa que esta falando. */
+	mine: readonly FamiliarMemory[];
+	/** Conversa do canal desde a ultima fala do bot, antigas primeiro. */
+	recent: readonly RecentLine[];
+}
+
+/** Linhas inteiras (na ordem) enquanto couberem em maxChars. */
+function fitLines(lines: readonly string[], maxChars: number): string[] {
+	const out: string[] = [];
+	let used = 0;
+	for (const line of lines) {
+		used += line.length + (out.length > 0 ? 1 : 0);
+		if (used > maxChars) break;
+		out.push(line);
+	}
+	return out;
+}
+
+const memoryLine = (m: FamiliarMemory) => `- (${m.kind}) ${m.content}`;
+
+/** Memoria do grupo no prompt da sessao ('' se nada). */
+export function groupMemoryText(group: readonly FamiliarMemory[], maxChars = 1500): string {
+	const lines = fitLines(group.map(memoryLine), maxChars);
+	return lines.length > 0 ? `[memória do grupo]\n${lines.join("\n")}` : "";
+}
+
+/**
+ * Texto do turno: a sessao e do canal (varias pessoas), entao cada mensagem
+ * diz quem fala, o que o bot lembra dela e o que rolou desde a ultima fala dele.
+ */
+export function turnText(turn: TurnInput, maxRecentChars = 2000): string {
+	const parts = [`[mensagem de ${turn.authorName} (id ${turn.authorId})]`];
+	if (turn.mine.length > 0) parts.push(`[o que você lembra de ${turn.authorName}]`, ...turn.mine.map(memoryLine));
+	const recent = fitLines(
+		turn.recent.map((r) => `${r.authorName}: ${r.body}`).reverse(),
+		maxRecentChars,
+	).reverse();
+	if (recent.length > 0) parts.push("[conversa no canal desde sua última fala]", ...recent);
+	if (parts.length > 1) parts.push("---");
+	return [...parts, turn.text].join("\n");
 }

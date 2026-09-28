@@ -96,6 +96,24 @@ describe("SessionPool", () => {
 	});
 });
 
+describe("SessionPool: idade maxima", () => {
+	it("recria a sessao depois da idade maxima mesmo em uso (memoria do grupo atualiza)", async () => {
+		const { created, disposed, factory } = stubFactory();
+		let now = 0;
+		const pool = new SessionPool(factory, 60_000, () => now, 180_000);
+		const first = await pool.get("c1", "user", "grupo v1");
+		for (const t of [50_000, 100_000, 150_000]) {
+			now = t;
+			expect(await pool.get("c1", "user", "grupo v2")).toBe(first);
+		}
+		now = 200_000;
+		const second = await pool.get("c1", "user", "grupo v3");
+		expect(second).not.toBe(first);
+		expect(disposed).toEqual([first]);
+		expect(created.map((c) => c.systemPrompt)).toEqual(["grupo v1", "grupo v3"]);
+	});
+});
+
 describe("botResourceLoader", () => {
 	function workspace() {
 		const cwd = mkdtempSync(join(tmpdir(), "bot-cwd-"));

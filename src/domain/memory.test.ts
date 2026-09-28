@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { extractionPrompt, familiarityText, validateExtraction } from "./memory.ts";
+import { extractionPrompt, groupMemoryText, turnText, validateExtraction } from "./memory.ts";
 import type { StoredMessage } from "./message.ts";
 
 const line = (seq: number, authorId: string, authorName: string, body: string, fromBot = false): StoredMessage => ({
@@ -75,21 +75,71 @@ describe("extractionPrompt", () => {
 	});
 });
 
-describe("familiarityText", () => {
-	it("junta as suas e as do grupo com cabecalho", () => {
-		const text = familiarityText([{ kind: "preference", content: "ama Terraria" }], [{ kind: "culture", content: "sextou" }]);
-		expect(text).toBe(
-			"[memória do grupo e suas preferências]\n- [sua] (preference) ama Terraria\n- [grupo] (culture) sextou",
+describe("groupMemoryText", () => {
+	it("lista as memorias do grupo com cabecalho", () => {
+		expect(groupMemoryText([{ kind: "culture", content: "sextou é sagrado" }])).toBe(
+			"[memória do grupo]\n- (culture) sextou é sagrado",
 		);
 	});
 
 	it("vazio vira string vazia", () => {
-		expect(familiarityText([], [])).toBe("");
+		expect(groupMemoryText([])).toBe("");
 	});
 
-	it("corta no limite com reticencias", () => {
-		const text = familiarityText([{ kind: "fact", content: "x".repeat(100) }], [], 50);
-		expect(text).toHaveLength(51);
-		expect(text.endsWith("…")).toBe(true);
+	it("corta no limite sem quebrar linha no meio", () => {
+		const text = groupMemoryText(
+			[
+				{ kind: "culture", content: "a".repeat(20) },
+				{ kind: "culture", content: "b".repeat(20) },
+			],
+			50,
+		);
+		expect(text).toBe(`[memória do grupo]\n- (culture) ${"a".repeat(20)}`);
+	});
+});
+
+describe("turnText", () => {
+	const base = { authorId: "u1", authorName: "Ana", text: "o que vc achou?", mine: [], recent: [] };
+
+	it("diz quem esta falando antes da mensagem", () => {
+		expect(turnText(base)).toBe("[mensagem de Ana (id u1)]\no que vc achou?");
+	});
+
+	it("inclui o que lembra da pessoa e a conversa recente do canal", () => {
+		const text = turnText({
+			...base,
+			mine: [{ kind: "preference", content: "odeia spoiler" }],
+			recent: [
+				{ authorName: "Bruno", body: "alguém viu o trailer?" },
+				{ authorName: "Ana", body: "vi, ficou bom" },
+			],
+		});
+		expect(text).toBe(
+			[
+				"[mensagem de Ana (id u1)]",
+				"[o que você lembra de Ana]",
+				"- (preference) odeia spoiler",
+				"[conversa no canal desde sua última fala]",
+				"Bruno: alguém viu o trailer?",
+				"Ana: vi, ficou bom",
+				"---",
+				"o que vc achou?",
+			].join("\n"),
+		);
+	});
+
+	it("conversa longa fica com as mensagens mais novas que cabem", () => {
+		const text = turnText(
+			{
+				...base,
+				recent: [
+					{ authorName: "Bruno", body: "velha ".repeat(10) },
+					{ authorName: "Bruno", body: "nova" },
+				],
+			},
+			30,
+		);
+		expect(text).toContain("Bruno: nova");
+		expect(text).not.toContain("velha");
 	});
 });

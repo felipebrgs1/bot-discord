@@ -3,9 +3,10 @@ import { FakeChatAgent } from "../test-support/fakes/chat-agent.ts";
 import { FakeClock } from "../test-support/fakes/clock.ts";
 import { FakeLogger } from "../test-support/fakes/logger.ts";
 import { FakeReplyTarget } from "../test-support/fakes/reply-target.ts";
+import type { Turn } from "./persona.ts";
 import { type IncomingMessage, type ReplySettings, ReplyToMessage } from "./reply-to-message.ts";
 
-function setup(settings: Partial<ReplySettings> = {}) {
+function setup(settings: Partial<ReplySettings> = {}, turnText: (turn: Turn) => string = (turn) => turn.text) {
 	const agent = new FakeChatAgent();
 	const clock = new FakeClock(100_000);
 	const logger = new FakeLogger();
@@ -14,7 +15,8 @@ function setup(settings: Partial<ReplySettings> = {}) {
 		clock,
 		logger,
 		settings: () => ({ cooldownMs: 0, adminIds: [], ...settings }),
-		systemPromptFor: (channelId, authorId) => `persona ${channelId}/${authorId}`,
+		systemPromptFor: (channelId) => `persona ${channelId}`,
+		turnText,
 	});
 	return { agent, clock, logger, replies };
 }
@@ -22,6 +24,8 @@ function setup(settings: Partial<ReplySettings> = {}) {
 const msg = (over: Partial<IncomingMessage> = {}): IncomingMessage => ({
 	channelId: "c1",
 	authorId: "u1",
+	authorName: "Ana",
+	messageId: "m1",
 	text: "oi",
 	images: [],
 	...over,
@@ -37,8 +41,8 @@ function gate() {
 }
 
 describe("ReplyToMessage: resposta", () => {
-	it("pergunta ao agente e entrega a resposta, com indicador de trabalho em volta", async () => {
-		const { agent, replies } = setup();
+	it("pergunta ao agente com o texto do turno (quem fala) e entrega a resposta, com indicador de trabalho em volta", async () => {
+		const { agent, replies } = setup({}, (turn) => `[${turn.authorName}/${turn.messageId}] ${turn.text}`);
 		const target = new FakeReplyTarget();
 		const image = { data: "AAA", mimeType: "image/png" };
 		expect(replies.submit(msg({ text: "tudo bem?", images: [image] }), target)).toBe(true);
@@ -48,13 +52,13 @@ describe("ReplyToMessage: resposta", () => {
 				channelId: "c1",
 				authorId: "u1",
 				role: "user",
-				text: "tudo bem?",
+				text: "[Ana/m1] tudo bem?",
 				images: [image],
 				source: "discord",
-				systemPrompt: "persona c1/u1",
+				systemPrompt: "persona c1",
 			},
 		]);
-		expect(target.delivered).toEqual([["eco: tudo bem?"]]);
+		expect(target.delivered).toEqual([["eco: [Ana/m1] tudo bem?"]]);
 		expect(target.events).toEqual(["working:start", "working:end", "deliver"]);
 	});
 

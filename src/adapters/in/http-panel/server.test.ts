@@ -28,15 +28,16 @@ function setup(password = "") {
 	const config = new FakeConfigStore();
 	const souls = new FakeSoulStore();
 	const memories = new FakeMemoryStore();
+	const messages = new FakeMessageStore();
 	const metrics = new FakeMetrics();
 	let n = 0;
 	const handler = createPanelHandler({
 		panel: new Panel({ config, souls, sessions: agent, memories, metrics, logs: { after: () => ({ entries: [], cursor: 0 }) } }),
 		chat: new WebChat({
-			messages: new FakeMessageStore(),
+			messages,
 			agent,
 			config,
-			persona: new Persona(souls, memories),
+			persona: new Persona(souls, memories, messages),
 			clock: new FakeClock(0),
 			newId: () => `web-${++n}`,
 		}),

@@ -76,6 +76,17 @@ export class SqliteMessageStore implements MessageStore, HistorySearch {
 		);
 	}
 
+	sinceLastBotMessage(channelId: string, limit: number): StoredMessage[] {
+		return this.rows(
+			`SELECT ${COLUMNS} FROM messages WHERE channel_id = ? AND rowid > COALESCE(
+         (SELECT MAX(rowid) FROM messages WHERE channel_id = ? AND from_bot = 1), 0)
+       ORDER BY rowid DESC LIMIT ?;`,
+			channelId,
+			channelId,
+			limit,
+		).reverse();
+	}
+
 	search(query: HistoryQuery): HistoryHit[] {
 		const filters: string[] = [];
 		const args: SQLInputValue[] = [];
