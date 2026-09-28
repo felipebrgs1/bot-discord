@@ -2,6 +2,7 @@ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import type { HistoryHit, HistoryQuery, HistorySearch } from "../../../application/ports/history-search.ts";
 import type { MessageStore } from "../../../application/ports/message-store.ts";
 import type { NewMessage, StoredMessage } from "../../../domain/message.ts";
+import { ftsMatch } from "./fts.ts";
 
 interface Row {
 	rowid: number;
@@ -12,9 +13,10 @@ interface Row {
 	body: string;
 	reply_to: string | null;
 	created_at: string;
+	from_bot: number;
 }
 
-const COLUMNS = "rowid, channel_id, author_id, author_name, message_id, body, reply_to, created_at";
+const COLUMNS = "rowid, channel_id, author_id, author_name, message_id, body, reply_to, created_at, from_bot";
 
 const toMessage = (r: Row): StoredMessage => ({
 	seq: r.rowid,
@@ -25,17 +27,8 @@ const toMessage = (r: Row): StoredMessage => ({
 	body: r.body,
 	replyTo: r.reply_to,
 	createdAt: r.created_at,
+	fromBot: r.from_bot === 1,
 });
-
-/** Termos entre aspas, AND implicito: sintaxe FTS invalida do usuario nao quebra. */
-function ftsQuery(text: string): string {
-	return text
-		.split(/\s+/)
-		.map((t) => t.replace(/"/g, '""'))
-		.filter(Boolean)
-		.map((t) => `"${t}"`)
-		.join(" ");
-}
 
 /** Tabela `messages` + indice FTS5 `messages_fts` (triggers na migracao v1). */
 export class SqliteMessageStore implements MessageStore, HistorySearch {
@@ -48,8 +41,8 @@ export class SqliteMessageStore implements MessageStore, HistorySearch {
 	append(message: NewMessage): StoredMessage | undefined {
 		const result = this.db
 			.prepare(
-				`INSERT OR IGNORE INTO messages (channel_id, author_id, author_name, message_id, body, reply_to, created_at)
-         VALUES (?,?,?,?,?,?,COALESCE(?, strftime('%Y-%m-%dT%H:%M:%fZ','now')));`,
+				`INSERT OR IGNORE INTO messages (channel_id, author_id, author_name, message_id, body, reply_to, created_at, from_bot)
+         VALUES (?,?,?,?,?,?,COALESCE(?, strftime('%Y-%m-%dT%H:%M:%fZ','now')),?);`,
 			)
 			.run(
 				message.channelId,
@@ -59,6 +52,7 @@ export class SqliteMessageStore implements MessageStore, HistorySearch {
 				message.body,
 				message.replyTo ?? null,
 				message.createdAt ?? null,
+				message.fromBot ? 1 : 0,
 			);
 		if (result.changes === 0) return undefined;
 		const row = this.db.prepare(`SELECT ${COLUMNS} FROM messages WHERE message_id = ?;`).get(message.messageId);
@@ -93,7 +87,9 @@ export class SqliteMessageStore implements MessageStore, HistorySearch {
 			filters.push("AND m.author_id = ?");
 			args.push(query.authorId);
 		}
-		const match = ftsQuery(query.text ?? "");
+		const terms = ftsMatch(query.text ?? "");
+		// So o texto: autor casando com qualquer termo traria mensagens aleatorias da pessoa.
+		const match = terms ? `body : (${terms})` : "";
 		const hits = match
 			? this.rows(
 					`SELECT ${COLUMNS.split(", ").map((c) => `m.${c}`).join(", ")} FROM messages_fts f

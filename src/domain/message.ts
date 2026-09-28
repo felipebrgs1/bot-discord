@@ -6,6 +6,8 @@ export interface NewMessage {
 	messageId: string;
 	body: string;
 	replyTo?: string;
+	/** Escrita por um bot (inclusive este); ausente = nao. */
+	fromBot?: boolean;
 	/** ISO; ausente = agora. */
 	createdAt?: string;
 }
@@ -20,6 +22,7 @@ export interface StoredMessage {
 	body: string;
 	replyTo: string | null;
 	createdAt: string;
+	fromBot: boolean;
 }
 
 export const MAX_STORED_BODY = 4000;

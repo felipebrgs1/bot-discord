@@ -37,6 +37,15 @@ const terraria = async () => ({
 });
 
 describe("ConsolidateMemory.channel", () => {
+	it("nao grava memoria de usuario atribuida ao bot", async () => {
+		const { messages, memories, consolidate } = setup(async () => ({
+			memories: [{ key: "time", kind: "fact", scope: "user", person_id: "b1", content: "o bot torce pro Timão" }],
+		}));
+		messages.append({ channelId: "c1", authorId: "b1", authorName: "bot", messageId: "mb", body: "sou do Timão", fromBot: true });
+		await consolidate.channel("c1");
+		expect(memories.listActive(10)).toEqual([]);
+	});
+
 	it("extrai do lote novo, grava e avanca o cursor ate a ultima mensagem", async () => {
 		const { memories, prompts, consolidate } = setup(terraria);
 		expect(await consolidate.channel("c1")).toEqual({ consolidated: true, memories: 1 });

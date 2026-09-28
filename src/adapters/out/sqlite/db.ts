@@ -14,7 +14,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 interface Migration {
 	version: number;
@@ -233,6 +233,23 @@ CREATE TABLE memory_cursors (
 );
 `,
 	},
+	{
+		version: 5,
+		name: "memory-version-ids",
+		sql: `
+-- Versao aponta para a memoria (a chave sozinha mistura pessoas/canais).
+ALTER TABLE memory_versions ADD COLUMN memory_id INTEGER;
+UPDATE memory_versions SET memory_id = (
+  SELECT m.rowid FROM memories m
+  WHERE m.key = memory_versions.memory_key AND m.scope = memory_versions.scope
+    AND m.person_id = memory_versions.person_id AND m.channel_id = memory_versions.channel_id
+);
+CREATE INDEX memory_versions_memory ON memory_versions(memory_id);
+
+-- Fala de bot nao vira fato na consolidacao.
+ALTER TABLE messages ADD COLUMN from_bot INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 ];
 
 /** Open (or create) the bot database and run pending migrations. */
@@ -257,11 +274,11 @@ export function schemaVersion(db: DatabaseSync): number {
 	return row.v;
 }
 
-/** Apply pending migrations in order, each in its own transaction. */
-export function migrate(db: DatabaseSync): void {
+/** Apply pending migrations in order (up to `target`), each in its own transaction. */
+export function migrate(db: DatabaseSync, target = CURRENT_SCHEMA_VERSION): void {
 	const current = schemaVersion(db);
 	for (const m of MIGRATIONS) {
-		if (m.version <= current) continue;
+		if (m.version <= current || m.version > target) continue;
 		db.exec("BEGIN;");
 		try {
 			db.exec(m.sql);

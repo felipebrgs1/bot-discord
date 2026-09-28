@@ -43,7 +43,8 @@ export class ConsolidateMemory {
 			logger.warn(`consolidação falhou (extração) canal=${channelId}: ${errorText(err)}`);
 			return { consolidated: false, memories: 0 };
 		}
-		const extraction = validateExtraction(raw, [...new Set(batch.map((m) => m.authorId))]);
+		const people = batch.filter((m) => !m.fromBot).map((m) => m.authorId);
+		const extraction = validateExtraction(raw, [...new Set(people)]);
 		memories.commit(channelId, extraction, last.seq);
 		logger.info(`memory_consolidated canal=${channelId} memorias=${extraction.memories.length}`);
 		return { consolidated: true, memories: extraction.memories.length };

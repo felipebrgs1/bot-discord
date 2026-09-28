@@ -23,6 +23,13 @@ export function messageStoreContract(make: () => MessageStore): void {
 		expect(b?.createdAt).not.toBe("");
 	});
 
+	it("guarda se a mensagem veio de bot (padrao: nao)", () => {
+		const store = make();
+		store.append(msg({ messageId: "m1" }));
+		store.append(msg({ messageId: "m2", authorId: "bot", fromBot: true }));
+		expect(store.listChannel("c1", 10).map((m) => m.fromBot)).toEqual([false, true]);
+	});
+
 	it("messageId repetido e ignorado", () => {
 		const store = make();
 		store.append(msg({ messageId: "m1", body: "primeira" }));
@@ -97,6 +104,16 @@ export function historySearchContract(make: () => MessageStore & HistorySearch):
 	it("aspas e simbolos na busca nao quebram", () => {
 		expect(() => seeded().search({ channelId: "c1", text: '"gato" OR (', limit: 5 })).not.toThrow();
 		expect(seeded().search({ channelId: "c1", text: '"gato"', limit: 5 }).map((h) => h.body)).toEqual([
+			"alguém viu meu gato?",
+		]);
+	});
+
+	it("acha por pergunta em linguagem natural e por plural", () => {
+		const store = seeded();
+		expect(store.search({ channelId: "c1", text: "qual era o gato da ana?", limit: 5 }).map((h) => h.body)).toEqual([
+			"alguém viu meu gato?",
+		]);
+		expect(store.search({ channelId: "c1", text: "gatos", limit: 5 }).map((h) => h.body)).toEqual([
 			"alguém viu meu gato?",
 		]);
 	});

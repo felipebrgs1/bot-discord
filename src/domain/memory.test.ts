@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { extractionPrompt, familiarityText, validateExtraction } from "./memory.ts";
 import type { StoredMessage } from "./message.ts";
 
-const line = (seq: number, authorId: string, authorName: string, body: string): StoredMessage => ({
+const line = (seq: number, authorId: string, authorName: string, body: string, fromBot = false): StoredMessage => ({
 	seq,
 	channelId: "c1",
 	authorId,
@@ -11,6 +11,19 @@ const line = (seq: number, authorId: string, authorName: string, body: string): 
 	body,
 	replyTo: null,
 	createdAt: `2026-09-20T10:0${seq}:00Z`,
+	fromBot,
+});
+
+describe("extractionPrompt", () => {
+	it("fala do bot aparece marcada e nao vira fato", () => {
+		const prompt = extractionPrompt("c1", [
+			line(1, "u1", "ana", "o Bruno torce pra quem?"),
+			line(2, "b1", "elmatadore", "o Bruno e corintiano", true),
+		]);
+		expect(prompt).toContain("ana (u1): o Bruno torce pra quem?");
+		expect(prompt).toContain("[bot] elmatadore (b1): o Bruno e corintiano");
+		expect(prompt).toMatch(/\[bot\].*nunca/i);
+	});
 });
 
 describe("validateExtraction", () => {

@@ -146,6 +146,16 @@ describe("mensagem", () => {
 		expect(events).toEqual(["reply vi"]);
 	});
 
+	it("mensagem de bot vai pro historico marcada como de bot", async () => {
+		const { messages, receive } = setup();
+		await receive(message({ id: "m8", author: { id: "b1", username: "outro", bot: true, system: false } }).m);
+		await receive(message({ id: "m9" }).m);
+		expect(messages.messages.map((x) => [x.messageId, x.fromBot])).toEqual([
+			["m8", true],
+			["m9", false],
+		]);
+	});
+
 	it("toda mensagem elegivel vai pro historico, com marca de imagem", async () => {
 		const { messages, receive } = setup();
 		await receive(message({ id: "m7", content: "olha", reference: { messageId: "m6" }, ...photo("https://cdn/a.png") }).m);

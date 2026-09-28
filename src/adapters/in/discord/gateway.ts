@@ -228,6 +228,7 @@ export class DiscordGateway {
 			messageId: m.id,
 			body: `${m.content ?? ""}${direct.length > 0 ? " [imagem]" : ""}`,
 			replyTo: m.reference?.messageId,
+			fromBot: m.author.bot,
 		});
 		if (!m.author.bot && (m.content.startsWith("!") || m.content.startsWith("/"))) {
 			try {

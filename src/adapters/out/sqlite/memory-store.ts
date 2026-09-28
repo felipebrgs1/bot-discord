@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { LearningEvent, MemoryAdmin, MemoryRecord, MemoryVersion } from "../../../application/ports/memory-admin.ts";
 import type { MemoryStore } from "../../../application/ports/memory-store.ts";
 import type { Extraction, FamiliarMemory, MemoryHit, MemoryStatus } from "../../../domain/memory.ts";
+import { ftsMatch } from "./fts.ts";
 
 interface Row {
 	rowid: number;
@@ -44,7 +45,10 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
              SET content = excluded.content, kind = excluded.kind, status = 'active', updated_at = ${NOW};`,
 					)
 					.run(m.key, m.kind, m.scope, m.personId, channelId, m.content);
-				this.addVersion(m.key, m.scope, m.personId, channelId, m.content, "consolidação");
+				const saved = this.db
+					.prepare("SELECT * FROM memories WHERE key = ? AND scope = ? AND person_id = ? AND channel_id = ?;")
+					.get(m.key, m.scope, m.personId, channelId) as unknown as Row;
+				this.addVersion(saved, m.content, "consolidação");
 			}
 			for (const ep of extraction.episodes) {
 				this.db
@@ -90,17 +94,13 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 	}
 
 	search(channelId: string, text: string, limit: number): MemoryHit[] {
-		const match = text
-			.split(/\s+/)
-			.filter(Boolean)
-			.map((t) => `"${t.replace(/"/g, '""')}"`)
-			.join(" ");
+		const match = ftsMatch(text);
 		if (!match) return [];
 		const rows = this.db
 			.prepare(
 				`SELECT m.key, m.kind, m.scope, m.person_id, m.content
          FROM memories_fts f JOIN memories m ON m.rowid = f.rowid
-         WHERE m.status = 'active' AND m.channel_id IN (?, '') AND memories_fts MATCH ?
+         WHERE m.status = 'active' AND (m.scope = 'user' OR m.channel_id IN (?, '')) AND memories_fts MATCH ?
          ORDER BY rank LIMIT ?;`,
 			)
 			.all(channelId, match, limit) as unknown as Row[];
@@ -123,8 +123,8 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 		const row = this.row(id);
 		if (!row) return [];
 		const rows = this.db
-			.prepare("SELECT rowid, content, reason, created_at FROM memory_versions WHERE memory_key = ? ORDER BY rowid;")
-			.all(row.key) as { rowid: number; content: string; reason: string; created_at: string }[];
+			.prepare("SELECT rowid, content, reason, created_at FROM memory_versions WHERE memory_id = ? ORDER BY rowid;")
+			.all(row.rowid) as { rowid: number; content: string; reason: string; created_at: string }[];
 		return rows.map((v) => ({ id: v.rowid, content: v.content, reason: v.reason, createdAt: v.created_at }));
 	}
 
@@ -132,7 +132,7 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 		const row = this.row(id);
 		if (!row) return false;
 		this.db.prepare(`UPDATE memories SET status = ?, updated_at = ${NOW} WHERE rowid = ?;`).run(status, id);
-		this.addVersion(row.key, row.scope, row.person_id, row.channel_id, row.content, reason);
+		this.addVersion(row, row.content, reason);
 		return true;
 	}
 
@@ -142,7 +142,7 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 		this.db
 			.prepare(`UPDATE memories SET content = ?, status = 'active', updated_at = ${NOW} WHERE rowid = ?;`)
 			.run(content, id);
-		this.addVersion(row.key, row.scope, row.person_id, row.channel_id, content, reason);
+		this.addVersion(row, content, reason);
 		return true;
 	}
 
@@ -177,7 +177,7 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 	}
 
 	private record(r: Row): MemoryRecord {
-		const n = this.db.prepare("SELECT COUNT(*) AS n FROM memory_versions WHERE memory_key = ?;").get(r.key) as {
+		const n = this.db.prepare("SELECT COUNT(*) AS n FROM memory_versions WHERE memory_id = ?;").get(r.rowid) as {
 			n: number;
 		};
 		return {
@@ -194,11 +194,11 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 		};
 	}
 
-	private addVersion(key: string, scope: string, personId: string, channelId: string, content: string, reason: string): void {
+	private addVersion(memory: Row, content: string, reason: string): void {
 		this.db
 			.prepare(
-				"INSERT INTO memory_versions (memory_key, scope, person_id, channel_id, content, reason) VALUES (?,?,?,?,?,?);",
+				"INSERT INTO memory_versions (memory_id, memory_key, scope, person_id, channel_id, content, reason) VALUES (?,?,?,?,?,?,?);",
 			)
-			.run(key, scope, personId, channelId, content, reason);
+			.run(memory.rowid, memory.key, memory.scope, memory.person_id, memory.channel_id, content, reason);
 	}
 }

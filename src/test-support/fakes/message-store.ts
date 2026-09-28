@@ -1,12 +1,8 @@
 import type { HistoryHit, HistoryQuery, HistorySearch } from "../../application/ports/history-search.ts";
 import type { MessageStore } from "../../application/ports/message-store.ts";
 import type { NewMessage, StoredMessage } from "../../domain/message.ts";
-
-const words = (s: string): string[] =>
-	s
-		.toLowerCase()
-		.split(/[^\p{L}\p{N}]+/u)
-		.filter(Boolean);
+import { searchTerms } from "../../domain/search-terms.ts";
+import { matchCount } from "./search.ts";
 
 export class FakeMessageStore implements MessageStore, HistorySearch {
 	readonly messages: StoredMessage[] = [];
@@ -24,6 +20,7 @@ export class FakeMessageStore implements MessageStore, HistorySearch {
 			body: message.body,
 			replyTo: message.replyTo ?? null,
 			createdAt: message.createdAt ?? new Date(this.seq * 1000).toISOString(),
+			fromBot: message.fromBot ?? false,
 		};
 		this.messages.push(stored);
 		return stored;
@@ -46,13 +43,14 @@ export class FakeMessageStore implements MessageStore, HistorySearch {
 	}
 
 	search(query: HistoryQuery): HistoryHit[] {
-		const terms = words(query.text ?? "");
+		const text = query.text ?? "";
 		let pool = this.channel(query.channelId).filter((m) => !query.authorId || m.authorId === query.authorId);
-		if (terms.length > 0) {
-			pool = pool.filter((m) => {
-				const have = new Set(words(m.body));
-				return terms.every((t) => have.has(t));
-			});
+		if (searchTerms(text).length > 0) {
+			pool = pool
+				.map((m) => ({ m, n: matchCount(text, m.body) }))
+				.filter(({ n }) => n > 0)
+				.sort((a, b) => b.n - a.n)
+				.map(({ m }) => m);
 		} else {
 			pool = pool.slice(-query.limit);
 		}

@@ -1,6 +1,7 @@
 import type { LearningEvent, MemoryAdmin, MemoryRecord, MemoryVersion } from "../../application/ports/memory-admin.ts";
 import type { MemoryStore } from "../../application/ports/memory-store.ts";
 import type { Extraction, FamiliarMemory, MemoryHit, MemoryStatus } from "../../domain/memory.ts";
+import { matchCount } from "./search.ts";
 
 interface Row {
 	id: number;
@@ -15,14 +16,9 @@ interface Row {
 }
 
 interface VersionRow extends MemoryVersion {
+	memoryId: number;
 	key: string;
 }
-
-const words = (s: string): string[] =>
-	s
-		.toLowerCase()
-		.split(/[^\p{L}\p{N}]+/u)
-		.filter(Boolean);
 
 export class FakeMemoryStore implements MemoryStore, MemoryAdmin {
 	readonly rows: Row[] = [];
@@ -36,18 +32,19 @@ export class FakeMemoryStore implements MemoryStore, MemoryAdmin {
 
 	commit(channelId: string, extraction: Extraction, lastSeq: number): void {
 		for (const m of extraction.memories) {
-			const existing = this.rows.find(
+			let row = this.rows.find(
 				(r) => r.key === m.key && r.scope === m.scope && r.personId === m.personId && r.channelId === channelId,
 			);
-			if (existing) {
-				existing.content = m.content;
-				existing.kind = m.kind;
-				existing.status = "active";
-				existing.updatedAt = this.now();
+			if (row) {
+				row.content = m.content;
+				row.kind = m.kind;
+				row.status = "active";
+				row.updatedAt = this.now();
 			} else {
-				this.rows.push({ id: this.rows.length + 1, ...m, channelId, status: "active", updatedAt: this.now() });
+				row = { id: this.rows.length + 1, ...m, channelId, status: "active", updatedAt: this.now() };
+				this.rows.push(row);
 			}
-			this.version(m.key, m.content, "consolidação");
+			this.version(row, m.content, "consolidação");
 		}
 		this.cursors.set(channelId, lastSeq);
 	}
@@ -73,13 +70,12 @@ export class FakeMemoryStore implements MemoryStore, MemoryAdmin {
 	}
 
 	search(channelId: string, text: string, limit: number): MemoryHit[] {
-		const terms = words(text);
 		return this.rows
-			.filter((r) => r.status === "active" && (r.channelId === channelId || r.channelId === ""))
-			.filter((r) => {
-				const have = new Set(words(r.content));
-				return terms.length > 0 && terms.every((t) => have.has(t));
-			})
+			.filter((r) => r.status === "active" && (r.scope === "user" || r.channelId === channelId || r.channelId === ""))
+			.map((r) => ({ r, n: matchCount(text, r.content) }))
+			.filter(({ n }) => n > 0)
+			.sort((a, b) => b.n - a.n)
+			.map(({ r }) => r)
 			.slice(0, limit)
 			.map((r) => ({ key: r.key, kind: r.kind, scope: r.scope, personId: r.personId, content: r.content }));
 	}
@@ -101,7 +97,7 @@ export class FakeMemoryStore implements MemoryStore, MemoryAdmin {
 		const row = this.rows.find((r) => r.id === id);
 		return row
 			? this.versionRows
-					.filter((v) => v.key === row.key)
+					.filter((v) => v.memoryId === row.id)
 					.map(({ id: vid, content, reason, createdAt }) => ({ id: vid, content, reason, createdAt }))
 			: [];
 	}
@@ -111,7 +107,7 @@ export class FakeMemoryStore implements MemoryStore, MemoryAdmin {
 		if (!row) return false;
 		row.status = status;
 		row.updatedAt = this.now();
-		this.version(row.key, row.content, reason);
+		this.version(row, row.content, reason);
 		return true;
 	}
 
@@ -121,7 +117,7 @@ export class FakeMemoryStore implements MemoryStore, MemoryAdmin {
 		row.content = content;
 		row.status = "active";
 		row.updatedAt = this.now();
-		this.version(row.key, content, reason);
+		this.version(row, content, reason);
 		return true;
 	}
 
@@ -142,13 +138,20 @@ export class FakeMemoryStore implements MemoryStore, MemoryAdmin {
 			kind: r.kind,
 			status: r.status,
 			content: r.content,
-			versions: this.versionRows.filter((v) => v.key === r.key).length,
+			versions: this.versionRows.filter((v) => v.memoryId === r.id).length,
 			updatedAt: r.updatedAt,
 		};
 	}
 
-	private version(key: string, content: string, reason: string): void {
-		this.versionRows.push({ id: this.versionRows.length + 1, key, content, reason, createdAt: this.now() });
+	private version(row: Row, content: string, reason: string): void {
+		this.versionRows.push({
+			id: this.versionRows.length + 1,
+			memoryId: row.id,
+			key: row.key,
+			content,
+			reason,
+			createdAt: this.now(),
+		});
 	}
 
 	private now(): string {

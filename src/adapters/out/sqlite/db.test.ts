@@ -11,7 +11,7 @@ function memDb(): DatabaseSync {
 describe("migrations", () => {
 	it("applies all migrations and reports the version", () => {
 		const db = memDb();
-		expect(schemaVersion(db)).toBe(4);
+		expect(schemaVersion(db)).toBe(5);
 		const tables = db
 			.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','trigger') ORDER BY name;")
 			.all() as { name: string }[];
@@ -47,7 +47,7 @@ describe("migrations", () => {
 	it("is idempotent", () => {
 		const db = memDb();
 		migrate(db);
-		expect(schemaVersion(db)).toBe(4);
+		expect(schemaVersion(db)).toBe(5);
 		db.close();
 	});
 
@@ -55,6 +55,30 @@ describe("migrations", () => {
 		const db = openDatabase(":memory:");
 		const row = db.prepare("PRAGMA journal_mode;").get() as { journal_mode: string };
 		expect(row.journal_mode.toLowerCase()).toBe("memory");
+		db.close();
+	});
+});
+
+describe("v5 memory-version-ids", () => {
+	it("liga versoes antigas a memoria certa por chave, escopo, pessoa e canal", () => {
+		const db = new DatabaseSync(":memory:");
+		migrate(db, 4);
+		const insert = db.prepare(
+			"INSERT INTO memories (key, kind, scope, person_id, channel_id, content) VALUES (?,?,?,?,?,?);",
+		);
+		const ana = Number(insert.run("jogo", "fact", "user", "ana", "c1", "Terraria").lastInsertRowid);
+		const bruno = Number(insert.run("jogo", "fact", "user", "bruno", "c1", "LoL").lastInsertRowid);
+		const version = db.prepare(
+			"INSERT INTO memory_versions (memory_key, scope, person_id, channel_id, content) VALUES (?,?,?,?,?);",
+		);
+		version.run("jogo", "user", "ana", "c1", "Terraria");
+		version.run("jogo", "user", "bruno", "c1", "LoL");
+		migrate(db);
+		const rows = db.prepare("SELECT content, memory_id FROM memory_versions ORDER BY rowid;").all();
+		expect(rows).toEqual([
+			{ content: "Terraria", memory_id: ana },
+			{ content: "LoL", memory_id: bruno },
+		]);
 		db.close();
 	});
 });

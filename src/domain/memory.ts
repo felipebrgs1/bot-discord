@@ -100,7 +100,7 @@ export function validateExtraction(raw: unknown, authorIds: readonly string[]): 
 export function extractionPrompt(channelId: string, batch: readonly StoredMessage[]): string {
 	const lines = batch.map(
 		(m) =>
-			`[${m.createdAt.slice(0, 16).replace("T", " ")}] ${m.authorName} (${m.authorId}): ${m.body.slice(0, 800)}`,
+			`[${m.createdAt.slice(0, 16).replace("T", " ")}] ${m.fromBot ? "[bot] " : ""}${m.authorName} (${m.authorId}): ${m.body.slice(0, 800)}`,
 	);
 	return `Você extrai aprendizado durável de conversa de Discord (canal ${channelId}).
 Responda SÓ com JSON: {"summary": "resumo do lote em 2-4 linhas", "memories": [...], "episodes": [...]}.
@@ -109,6 +109,7 @@ Regras:
 - Só o que é DURÁVEL (fato, gosto, correção ao bot, piada interna com significado). Conversa casual = nada.
 - scope user SOMENTE para declaração da própria pessoa (person_id = autor dela); resto é group.
 - lesson só de correção concreta ao que o bot fez. culture sempre group.
+- Linha marcada [bot] é fala de bot: nunca vira fato nem memória; só a correção que as pessoas fazem a ela.
 - Reutilize a mesma key quando o fato atualizar (ex. jogo-favorito).
 - episodes: histórias do grupo com começo/meio (título + resumo). Vazio se não houver.
 Mensagens:

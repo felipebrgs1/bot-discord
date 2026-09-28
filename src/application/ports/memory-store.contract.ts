@@ -31,6 +31,25 @@ export function memoryStoreContract(make: () => MemoryStore & MemoryAdmin): void
 		expect(store.versions(all[0]?.id ?? 0).map((v) => v.content)).toEqual(["Terraria", "Stardew"]);
 	});
 
+	it("versoes de pessoas diferentes com a mesma chave nao se misturam", () => {
+		const store = make();
+		store.commit(
+			"c1",
+			extraction(
+				mem({ key: "jogo", scope: "user", personId: "ana", content: "Terraria" }),
+				mem({ key: "jogo", scope: "user", personId: "bruno", content: "LoL" }),
+			),
+			1,
+		);
+		store.commit("c1", extraction(mem({ key: "jogo", scope: "user", personId: "ana", content: "Stardew" })), 2);
+		const ana = store.listActive(10).find((m) => m.personId === "ana");
+		const bruno = store.listActive(10).find((m) => m.personId === "bruno");
+		expect(store.versions(ana?.id ?? 0).map((v) => v.content)).toEqual(["Terraria", "Stardew"]);
+		expect(store.versions(bruno?.id ?? 0).map((v) => v.content)).toEqual(["LoL"]);
+		expect(ana?.versions).toBe(2);
+		expect(bruno?.versions).toBe(1);
+	});
+
 	it("familiar junta prefs/licoes da pessoa e prefs/licoes/cultura do grupo no canal", () => {
 		const store = make();
 		store.commit(
@@ -63,6 +82,39 @@ export function memoryStoreContract(make: () => MemoryStore & MemoryAdmin): void
 		store.setStatus(id, "active", "voltou");
 		expect(store.search("c1", "Terraria", 5)).toHaveLength(1);
 		expect(store.versions(id).map((v) => v.reason)).toEqual(["consolidação", "teste", "voltou"]);
+	});
+
+	it("acha memoria por pergunta em linguagem natural, mais termos em comum primeiro", () => {
+		const store = make();
+		store.commit(
+			"c1",
+			extraction(
+				mem({ key: "a", content: "gosta de jogo de terror" }),
+				mem({ key: "b", content: "o jogo favorito do grupo é Terraria" }),
+				mem({ key: "c", content: "sextou é sagrado" }),
+			),
+			1,
+		);
+		expect(store.search("c1", "qual é o jogo favorito de vocês?", 5).map((h) => h.key)).toEqual(["b", "a"]);
+	});
+
+	it("acha plural e singular pelo prefixo", () => {
+		const store = make();
+		store.commit("c1", extraction(mem({ key: "a", content: "curte jogos de corrida" })), 1);
+		expect(store.search("c1", "jogo", 5).map((h) => h.key)).toEqual(["a"]);
+		expect(store.search("c1", "corridas", 5).map((h) => h.key)).toEqual(["a"]);
+	});
+
+	it("memoria de pessoa aparece na busca de qualquer canal", () => {
+		const store = make();
+		store.commit("c1", extraction(mem({ key: "a", scope: "user", personId: "u1", content: "odeia spoiler" })), 1);
+		expect(store.search("c2", "spoiler", 5).map((h) => h.key)).toEqual(["a"]);
+	});
+
+	it("busca so com palavras vazias nao devolve nada", () => {
+		const store = make();
+		store.commit("c1", extraction(mem({ key: "a", content: "isso aqui é uma memória" })), 1);
+		expect(store.search("c1", "o que é isso", 5)).toEqual([]);
 	});
 
 	it("correct troca o conteudo, reativa e versiona", () => {
