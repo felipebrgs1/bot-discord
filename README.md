@@ -33,6 +33,12 @@ Semear configuracao a partir de JSON:
 bun scripts/seed.ts seed.json data/bot.db
 ```
 
+## Personalidade
+
+`personality.md` na raiz e obrigatorio: e o prompt base do bot (sem ele o bot nao sobe).
+E relido a cada sessao nova, entao editar vale sem restart. As souls do painel entram
+como complemento por canal. O bot nao carrega `AGENTS.md`, skills nem extensions do pi.
+
 ## Ambiente
 
 Arquivo `.env` na raiz:

@@ -25,6 +25,32 @@ export function excludedToolsFor(role: Role): string[] {
 	return canUseHostTools(role) ? [] : [...PI_HOST_TOOLS];
 }
 
+export interface BotLoaderOptions {
+	cwd: string;
+	agentDir: string;
+	/** Personalidade base (substitui o prompt de programacao do pi). */
+	personality: string;
+	/** Complemento da conversa (soul do canal + memoria). */
+	extra?: string;
+}
+
+/**
+ * O bot nao e um agente de programacao: nada de AGENTS.md, SYSTEM.md, skills,
+ * extensions ou templates da maquina. So a personalidade e o complemento.
+ */
+export function botResourceLoader(opts: BotLoaderOptions): DefaultResourceLoader {
+	return new DefaultResourceLoader({
+		cwd: opts.cwd,
+		agentDir: opts.agentDir,
+		noContextFiles: true,
+		noSkills: true,
+		noExtensions: true,
+		noPromptTemplates: true,
+		systemPrompt: opts.personality,
+		appendSystemPrompt: opts.extra ? [opts.extra] : [],
+	});
+}
+
 export interface SessionFactory {
 	create(conversationId: string, role: Role, systemPrompt?: string): Promise<AgentSession>;
 	dispose(session: AgentSession): void;
@@ -34,14 +60,11 @@ export interface SessionFactory {
 export function piSessionFactory(
 	cwd: string,
 	toolsFor: (conversationId: string, role: Role) => ToolDefinition[],
+	personality: () => string,
 ): SessionFactory {
 	return {
 		async create(conversationId, role, systemPrompt) {
-			const loader = new DefaultResourceLoader({
-				cwd,
-				agentDir: getAgentDir(),
-				appendSystemPrompt: systemPrompt ? [systemPrompt] : [],
-			});
+			const loader = botResourceLoader({ cwd, agentDir: getAgentDir(), personality: personality(), extra: systemPrompt });
 			await loader.reload();
 			const { session } = await createAgentSession({
 				cwd,

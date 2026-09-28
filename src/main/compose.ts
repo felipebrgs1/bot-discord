@@ -3,6 +3,7 @@
  * entradas (Discord, consolidacao, painel). Unico lugar que le o ambiente.
  */
 
+import { readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { join } from "node:path";
 import { DiscordGateway } from "../adapters/in/discord/gateway.ts";
@@ -40,7 +41,6 @@ import { TextCommands } from "../application/text-commands.ts";
 import { WebChat } from "../application/web-chat.ts";
 import { WebResearch } from "../application/web-research.ts";
 
-const DEFAULT_SOUL_FALLBACK = "Você é um amigo do servidor: direto, bem-humorado, fala PT-BR.";
 /** Instalado pelo setup do bot Go; YTDLP_BIN tem precedencia. */
 const DEFAULT_YTDLP = "/home/ubuntu/bot/botdiscord/bin/yt-dlp";
 
@@ -62,12 +62,27 @@ export interface ComposeOptions {
 export function compose(opts: ComposeOptions) {
 	const env = (name: string) => opts.env[name] ?? "";
 
+	// Personalidade base (obrigatoria): relida a cada sessao nova, editar vale sem restart.
+	const personalityPath = join(opts.root, "personality.md");
+	const personality = (): string => {
+		let text = "";
+		try {
+			text = readFileSync(personalityPath, "utf8").trim();
+		} catch {
+			/* tratado abaixo */
+		}
+		if (!text) throw new Error(`personality.md ausente ou vazio em ${personalityPath}`);
+		return text;
+	};
+	personality();
+
 	// Adapters de saida
 	const log = new LogBuffer();
 	const db = openDatabase(opts.dbPath);
 	const config = new SqliteConfigStore(db);
 	const souls = new SqliteSoulStore(db);
-	souls.ensureSeed(config.all().bot.personality || DEFAULT_SOUL_FALLBACK);
+	// Soul e complemento por canal; a base vem do personality.md.
+	souls.ensureSeed("");
 	const messages = new SqliteMessageStore(db);
 	const memories = new SqliteMemoryStore(db);
 	const metrics = new SqliteMetrics(db);
@@ -85,7 +100,7 @@ export function compose(opts: ComposeOptions) {
 		games,
 	};
 	const pool = new SessionPool(
-		opts.sessionFactory ?? piSessionFactory(opts.cwd, (conversationId) => botTools(tools, conversationId)),
+		opts.sessionFactory ?? piSessionFactory(opts.cwd, (conversationId) => botTools(tools, conversationId), personality),
 	);
 	const agent = new PiChatAgent({ pool, metrics, model: () => config.all().chat.model });
 	const replies = new ReplyToMessage({
@@ -149,6 +164,7 @@ export function compose(opts: ComposeOptions) {
 		config,
 		agent,
 		tools: (conversationId: string) => botTools(tools, conversationId),
+		personality,
 		panelHandler: () => createPanelHandler(panelDeps),
 
 		/** Liga Discord, consolidacao e painel; devolve o desligamento. */

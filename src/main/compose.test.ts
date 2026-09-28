@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { EventEmitter } from "node:events";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { SessionFactory } from "../adapters/out/pi-agent/session-pool.ts";
 import { compose } from "./compose.ts";
@@ -22,8 +25,15 @@ const noNetwork = (async () => {
 	throw new Error("sem rede no teste");
 }) as unknown as typeof fetch;
 
-function build(env: Record<string, string> = {}) {
-	return compose({ dbPath: ":memory:", root: "/nao-existe", cwd: "/tmp", env, sessionFactory: fakeSessions, http: noNetwork });
+/** Raiz temporaria com personality.md (obrigatorio na montagem). */
+function rootWith(personality: string | undefined): string {
+	const root = mkdtempSync(join(tmpdir(), "bot-root-"));
+	if (personality !== undefined) writeFileSync(join(root, "personality.md"), personality);
+	return root;
+}
+
+function build(env: Record<string, string> = {}, root = rootWith("sou um bot")) {
+	return compose({ dbPath: ":memory:", root, cwd: "/tmp", env, sessionFactory: fakeSessions, http: noNetwork });
 }
 
 function call(handler: (req: IncomingMessage, res: ServerResponse) => void, method: string, url: string, body?: unknown): Promise<string> {
@@ -76,6 +86,27 @@ describe("compose", () => {
 			"magnet",
 		]);
 		app.db.close();
+	});
+
+	it("personalidade vem do personality.md da raiz e e relida a cada chamada", () => {
+		const root = rootWith("sou o elmatadore\n");
+		const app = build({}, root);
+		expect(app.personality()).toBe("sou o elmatadore");
+		writeFileSync(join(root, "personality.md"), "mudei");
+		expect(app.personality()).toBe("mudei");
+		app.db.close();
+	});
+
+	it("banco novo: soul padrao comeca vazia, a base e o personality.md", async () => {
+		const app = build();
+		const form = JSON.parse(await call(app.panelHandler(), "GET", "/api/config/discord")) as { personality: string };
+		expect(form.personality).toBe("");
+		app.db.close();
+	});
+
+	it("sem personality.md ou com ele vazio a montagem falha", () => {
+		expect(() => build({}, rootWith(undefined))).toThrow("personality.md");
+		expect(() => build({}, rootWith("  \n"))).toThrow("personality.md");
 	});
 
 	it("sem DISCORD_TOKEN nao sobe", async () => {

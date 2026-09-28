@@ -1,7 +1,10 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Role } from "../../../domain/roles.ts";
-import { excludedToolsFor, type SessionFactory, SessionPool } from "./session-pool.ts";
+import { botResourceLoader, excludedToolsFor, type SessionFactory, SessionPool } from "./session-pool.ts";
 
 function stubSession(answer: string, calls: unknown[][] = []): AgentSession {
 	return {
@@ -90,5 +93,35 @@ describe("SessionPool", () => {
 		await pool.get("c1", "user");
 		pool.dispose();
 		expect(pool.size()).toBe(0);
+	});
+});
+
+describe("botResourceLoader", () => {
+	function workspace() {
+		const cwd = mkdtempSync(join(tmpdir(), "bot-cwd-"));
+		const agentDir = mkdtempSync(join(tmpdir(), "bot-agent-"));
+		writeFileSync(join(cwd, "AGENTS.md"), "TDD obrigatorio");
+		mkdirSync(join(cwd, ".pi"));
+		writeFileSync(join(cwd, ".pi", "SYSTEM.md"), "prompt do repo");
+		writeFileSync(join(agentDir, "AGENTS.md"), "regras globais do dono");
+		mkdirSync(join(agentDir, "skills", "wrangler"), { recursive: true });
+		writeFileSync(join(agentDir, "skills", "wrangler", "SKILL.md"), "---\nname: wrangler\ndescription: deploy\n---\ncorpo");
+		return { cwd, agentDir };
+	}
+
+	it("nao carrega AGENTS.md, SYSTEM.md nem skills da maquina", async () => {
+		const loader = botResourceLoader({ ...workspace(), personality: "sou o elmatadore" });
+		await loader.reload();
+		expect(loader.getAgentsFiles().agentsFiles).toEqual([]);
+		expect(loader.getSkills().skills).toEqual([]);
+		expect(loader.getPrompts().prompts).toEqual([]);
+		expect(loader.getSystemPrompt()).toBe("sou o elmatadore");
+	});
+
+	it("personalidade e a base e a soul do canal entra como complemento", async () => {
+		const loader = botResourceLoader({ ...workspace(), personality: "sou o elmatadore", extra: "soul do canal" });
+		await loader.reload();
+		expect(loader.getSystemPrompt()).toBe("sou o elmatadore");
+		expect(loader.getAppendSystemPrompt()).toEqual(["soul do canal"]);
 	});
 });
