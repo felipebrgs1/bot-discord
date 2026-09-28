@@ -81,7 +81,7 @@ export function botTools(services: ToolServices, channelId: string): ToolDefinit
 			name: "memory_search",
 			label: "Buscar memórias",
 			description:
-				"Busca nas memórias duráveis do grupo e suas (fatos, preferências, lições, piadas internas). Use quando a resposta precisar de algo aprendido antes que não está na conversa atual.",
+				"Busca nas memórias duráveis do grupo e das pessoas (fatos, preferências, lições, piadas internas) e nas histórias do grupo (kind episode). Use quando a resposta precisar de algo aprendido antes que não está na conversa atual.",
 			parameters: Type.Object({
 				query: Type.String({ description: "O que procurar" }),
 				limit: Type.Optional(Type.Number({ description: "Máximo (padrão 5, máx 8)" })),

@@ -10,7 +10,8 @@ const mem = (over: Partial<ExtractedMemory> & { key: string; content: string }):
 	...over,
 });
 
-const extraction = (...memories: ExtractedMemory[]): Extraction => ({ summary: "s", memories, episodes: [] });
+const extraction = (...memories: ExtractedMemory[]): Extraction => ({ summary: "s", memories, forget: [], confirm: [], episodes: [] });
+const changes = (over: Partial<Extraction>): Extraction => ({ ...extraction(), ...over });
 
 export function memoryStoreContract(make: () => MemoryStore & MemoryAdmin): void {
 	it("cursor comeca em 0 e avanca no commit", () => {
@@ -50,6 +51,66 @@ export function memoryStoreContract(make: () => MemoryStore & MemoryAdmin): void
 		expect(bruno?.versions).toBe(1);
 	});
 
+	it("memoria de pessoa e uma so em todos os canais: mesma key em outro canal atualiza", () => {
+		const store = make();
+		store.commit("c1", extraction(mem({ key: "jogo", scope: "user", personId: "u1", content: "Terraria" })), 1);
+		store.commit("c2", extraction(mem({ key: "jogo", scope: "user", personId: "u1", content: "Stardew" })), 1);
+		const all = store.listActive(10);
+		expect(all.map((m) => m.content)).toEqual(["Stardew"]);
+		expect(all[0]?.versions).toBe(2);
+	});
+
+	it("forget suprime a memoria com o motivo e vira versao", () => {
+		const store = make();
+		store.commit("c1", extraction(mem({ key: "lol", scope: "user", personId: "u1", content: "joga LoL" })), 1);
+		store.commit("c1", changes({ forget: [{ key: "lol", scope: "user", personId: "u1", reason: "largou" }] }), 2);
+		expect(store.listActive(10)).toEqual([]);
+		expect(store.familiar("u1", "c1").mine).toEqual([]);
+		const id = store.find(1)?.id ?? 0;
+		expect(store.versions(id).map((v) => v.reason)).toEqual(["consolidação", "consolidação: largou"]);
+	});
+
+	it("reafirmar (confirm ou mesmo conteudo) nao cria versao e sobe no ranking", () => {
+		const store = make();
+		store.commit(
+			"c1",
+			extraction(
+				mem({ key: "a", kind: "preference", scope: "user", personId: "u1", content: "ama Terraria" }),
+				mem({ key: "b", kind: "preference", scope: "user", personId: "u1", content: "odeia spoiler" }),
+			),
+			1,
+		);
+		store.commit("c1", extraction(mem({ key: "a", kind: "preference", scope: "user", personId: "u1", content: "ama Terraria" })), 2);
+		store.commit("c1", changes({ confirm: [{ key: "a", scope: "user", personId: "u1" }] }), 3);
+		expect(store.familiar("u1", "c1").mine.map((m) => m.content)).toEqual(["ama Terraria", "odeia spoiler"]);
+		const a = store.listActive(10).find((m) => m.key === "a");
+		expect(a?.versions).toBe(1);
+	});
+
+	it("known traz as ativas do grupo do canal e das pessoas pedidas", () => {
+		const store = make();
+		store.commit(
+			"c1",
+			extraction(
+				mem({ key: "g", kind: "culture", content: "sextou" }),
+				mem({ key: "a", scope: "user", personId: "u1", content: "da Ana" }),
+				mem({ key: "b", scope: "user", personId: "u2", content: "do Bruno" }),
+			),
+			1,
+		);
+		store.commit("c9", extraction(mem({ key: "o", content: "de outro canal" })), 1);
+		expect(store.known("c1", ["u1"]).map((m) => m.content).sort()).toEqual(["da Ana", "sextou"]);
+	});
+
+	it("episodios sao do canal e entram na busca", () => {
+		const store = make();
+		store.commit("c1", changes({ episodes: [{ key: "saga", title: "A saga do churrasco", summary: "choveu e ninguem levou carvao" }] }), 1);
+		store.commit("c2", changes({ episodes: [{ key: "saga", title: "Outra saga", summary: "carvao no outro canal" }] }), 1);
+		expect(store.search("c1", "carvao", 5)).toEqual([
+			{ key: "saga", kind: "episode", scope: "group", personId: "", content: "A saga do churrasco: choveu e ninguem levou carvao" },
+		]);
+	});
+
 	it("familiar junta prefs/licoes da pessoa e prefs/licoes/cultura do grupo no canal", () => {
 		const store = make();
 		store.commit(
@@ -57,7 +118,7 @@ export function memoryStoreContract(make: () => MemoryStore & MemoryAdmin): void
 			extraction(
 				mem({ key: "a", kind: "preference", scope: "user", personId: "u1", content: "ama Terraria" }),
 				mem({ key: "b", kind: "lesson", scope: "user", personId: "u1", content: "não resuma demais" }),
-				mem({ key: "c", kind: "fact", scope: "user", personId: "u1", content: "fato seco não entra" }),
+				mem({ key: "c", kind: "fact", scope: "user", personId: "u1", content: "fato vem depois" }),
 				mem({ key: "d", kind: "culture", content: "sextou é sagrado" }),
 				mem({ key: "e", kind: "preference", scope: "user", personId: "u2", content: "do outro não entra" }),
 			),
@@ -65,7 +126,8 @@ export function memoryStoreContract(make: () => MemoryStore & MemoryAdmin): void
 		);
 		store.commit("c9", extraction(mem({ key: "f", kind: "preference", content: "de outro canal não entra" })), 1);
 		const { mine, group } = store.familiar("u1", "c1");
-		expect(mine.map((m) => m.content).sort()).toEqual(["ama Terraria", "não resuma demais"]);
+		expect(mine.map((m) => m.content).slice(0, 2).sort()).toEqual(["ama Terraria", "não resuma demais"]);
+		expect(mine.at(-1)?.content).toBe("fato vem depois");
 		expect(group).toEqual([{ kind: "culture", content: "sextou é sagrado" }]);
 	});
 

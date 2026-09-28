@@ -73,6 +73,46 @@ describe("ConsolidateMemory.channel", () => {
 		expect(memories.cursor("c1")).toBe(2);
 	});
 
+	it("mostra ao extrator as memorias atuais do grupo e de quem falou no lote", async () => {
+		const { memories, prompts, consolidate } = setup(terraria);
+		memories.commit(
+			"c0",
+			{
+				summary: "",
+				memories: [
+					{ key: "joga-lol", kind: "fact", scope: "user", personId: "u2", content: "joga LoL" },
+					{ key: "de-fora", kind: "fact", scope: "user", personId: "u9", content: "de quem nao falou" },
+				],
+				forget: [],
+				confirm: [],
+				episodes: [],
+			},
+			0,
+		);
+		await consolidate.channel("c1");
+		expect(prompts[0]).toContain("key=joga-lol scope=user person_id=u2 (fact): joga LoL");
+		expect(prompts[0]).not.toContain("de quem nao falou");
+	});
+
+	it("forget do modelo suprime memoria conhecida de quem falou", async () => {
+		const { memories, consolidate } = setup(async () => ({
+			forget: [{ key: "joga-lol", scope: "user", person_id: "u2", reason: "largou" }],
+		}));
+		memories.commit(
+			"c0",
+			{
+				summary: "",
+				memories: [{ key: "joga-lol", kind: "fact", scope: "user", personId: "u2", content: "joga LoL" }],
+				forget: [],
+				confirm: [],
+				episodes: [],
+			},
+			0,
+		);
+		await consolidate.channel("c1");
+		expect(memories.listActive(10)).toEqual([]);
+	});
+
 	it("so aceita memoria individual de quem falou no lote", async () => {
 		const { memories, consolidate } = setup(async () => ({
 			memories: [{ key: "x", kind: "preference", scope: "user", person_id: "u9", content: "intruso" }],

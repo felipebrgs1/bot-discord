@@ -188,10 +188,10 @@ describe("chat web", () => {
 describe("memorias", () => {
 	it("lista, versoes, forget/restore e correct", async () => {
 		const { handler, memories } = setup();
-		memories.commit("c1", { summary: "", memories: [{ key: "jogo", kind: "preference", scope: "user", personId: "u1", content: "Terraria" }], episodes: [] }, 1);
+		memories.commit("c1", { summary: "", memories: [{ key: "jogo", kind: "preference", scope: "user", personId: "u1", content: "Terraria" }], forget: [], confirm: [], episodes: [] }, 1);
 		const id = memories.listActive(1)[0]?.id ?? 0;
 		const list = j(await request(handler, "GET", "/api/memories")) as { items: Record<string, unknown>[] };
-		expect(list.items[0]).toMatchObject({ id, channel_id: "c1", user_id: "u1", key: "jogo", content: "Terraria", version: 1 });
+		expect(list.items[0]).toMatchObject({ id, channel_id: "", user_id: "u1", key: "jogo", content: "Terraria", version: 1 });
 
 		expect(j(await request(handler, "POST", `/api/memories/${id}/forget`, { body: { reason: "teste" } }))).toEqual({ changed: true });
 		expect((j(await request(handler, "GET", "/api/memories")) as { items: unknown[] }).items).toEqual([]);

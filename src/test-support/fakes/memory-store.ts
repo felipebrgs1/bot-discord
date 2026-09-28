@@ -1,6 +1,6 @@
 import type { LearningEvent, MemoryAdmin, MemoryRecord, MemoryVersion } from "../../application/ports/memory-admin.ts";
 import type { MemoryStore } from "../../application/ports/memory-store.ts";
-import type { Extraction, FamiliarMemory, MemoryHit, MemoryStatus } from "../../domain/memory.ts";
+import type { Extraction, FamiliarMemory, MemoryHit, MemoryRef, MemoryStatus } from "../../domain/memory.ts";
 import { matchCount } from "./search.ts";
 
 interface Row {
@@ -12,6 +12,7 @@ interface Row {
 	channelId: string;
 	content: string;
 	status: string;
+	seenCount: number;
 	updatedAt: string;
 }
 
@@ -20,9 +21,28 @@ interface VersionRow extends MemoryVersion {
 	key: string;
 }
 
+interface EpisodeRow {
+	channelId: string;
+	key: string;
+	title: string;
+	summary: string;
+}
+
+const LIMIT = 10;
+const KNOWN_LIMIT = 60;
+
+/** Preferencia/licao antes de fato; depois mais reafirmada; depois mais recente. */
+function byRank(a: Row, b: Row): number {
+	const kind = (r: Row) => (r.kind === "preference" || r.kind === "lesson" ? 0 : 1);
+	return kind(a) - kind(b) || b.seenCount - a.seenCount || (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0);
+}
+
+const hit = (r: Row): MemoryHit => ({ key: r.key, kind: r.kind, scope: r.scope, personId: r.personId, content: r.content });
+
 export class FakeMemoryStore implements MemoryStore, MemoryAdmin {
 	readonly rows: Row[] = [];
 	readonly versionRows: VersionRow[] = [];
+	readonly episodes: EpisodeRow[] = [];
 	private readonly cursors = new Map<string, number>();
 	private tick = 0;
 
@@ -32,52 +52,102 @@ export class FakeMemoryStore implements MemoryStore, MemoryAdmin {
 
 	commit(channelId: string, extraction: Extraction, lastSeq: number): void {
 		for (const m of extraction.memories) {
-			let row = this.rows.find(
-				(r) => r.key === m.key && r.scope === m.scope && r.personId === m.personId && r.channelId === channelId,
+			const home = m.scope === "user" ? "" : channelId;
+			const row = this.rows.find(
+				(r) => r.key === m.key && r.scope === m.scope && r.personId === m.personId && r.channelId === home,
 			);
-			if (row) {
-				row.content = m.content;
-				row.kind = m.kind;
-				row.status = "active";
-				row.updatedAt = this.now();
+			if (!row) {
+				const created = { id: this.rows.length + 1, ...m, channelId: home, status: "active", seenCount: 1, updatedAt: this.now() };
+				this.rows.push(created);
+				this.version(created, m.content, "consolidação");
+			} else if (row.content === m.content && row.status === "active") {
+				this.reaffirm(row);
 			} else {
-				row = { id: this.rows.length + 1, ...m, channelId, status: "active", updatedAt: this.now() };
-				this.rows.push(row);
+				Object.assign(row, { content: m.content, kind: m.kind, status: "active", updatedAt: this.now() });
+				this.version(row, m.content, "consolidação");
 			}
-			this.version(row, m.content, "consolidação");
+		}
+		for (const f of extraction.forget) {
+			const row = this.target(channelId, f);
+			if (!row) continue;
+			row.status = "suppressed";
+			row.updatedAt = this.now();
+			this.version(row, row.content, f.reason ? `consolidação: ${f.reason}` : "consolidação");
+		}
+		for (const c of extraction.confirm) {
+			const row = this.target(channelId, c);
+			if (row) this.reaffirm(row);
+		}
+		for (const e of extraction.episodes) {
+			const existing = this.episodes.find((x) => x.channelId === channelId && x.key === e.key);
+			if (existing) Object.assign(existing, { title: e.title, summary: e.summary });
+			else this.episodes.push({ channelId, ...e });
 		}
 		this.cursors.set(channelId, lastSeq);
 	}
 
+	known(channelId: string, personIds: readonly string[]): MemoryHit[] {
+		return this.active()
+			.filter((r) => (r.scope === "user" ? personIds.includes(r.personId) : this.inChannel(r, channelId)))
+			.sort(byRank)
+			.slice(0, KNOWN_LIMIT)
+			.map(hit);
+	}
+
 	familiar(personId: string, channelId: string): { mine: FamiliarMemory[]; group: FamiliarMemory[] } {
-		const active = [...this.rows].reverse().filter((r) => r.status === "active");
 		const pick = (r: Row): FamiliarMemory => ({ kind: r.kind, content: r.content });
 		return {
-			mine: active
-				.filter((r) => r.scope === "user" && r.personId === personId && ["preference", "lesson"].includes(r.kind))
-				.slice(0, 10)
+			mine: this.active()
+				.filter((r) => r.scope === "user" && r.personId === personId && ["preference", "lesson", "fact"].includes(r.kind))
+				.sort(byRank)
+				.slice(0, LIMIT)
 				.map(pick),
-			group: active
-				.filter(
-					(r) =>
-						r.scope === "group" &&
-						(r.channelId === channelId || r.channelId === "") &&
-						["preference", "lesson", "culture"].includes(r.kind),
-				)
-				.slice(0, 10)
+			group: this.active()
+				.filter((r) => r.scope === "group" && this.inChannel(r, channelId) && ["preference", "lesson", "culture"].includes(r.kind))
+				.sort(byRank)
+				.slice(0, LIMIT)
 				.map(pick),
 		};
 	}
 
 	search(channelId: string, text: string, limit: number): MemoryHit[] {
-		return this.rows
-			.filter((r) => r.status === "active" && (r.scope === "user" || r.channelId === channelId || r.channelId === ""))
-			.map((r) => ({ r, n: matchCount(text, r.content) }))
+		const memories = this.active()
+			.filter((r) => r.scope === "user" || this.inChannel(r, channelId))
+			.map((r) => ({ hit: hit(r), n: matchCount(text, r.content) }));
+		const episodes = this.episodes
+			.filter((e) => e.channelId === channelId || e.channelId === "")
+			.map((e) => {
+				const content = `${e.title}: ${e.summary}`;
+				return { hit: { key: e.key, kind: "episode", scope: "group", personId: "", content }, n: matchCount(text, content) };
+			});
+		return [...memories, ...episodes]
 			.filter(({ n }) => n > 0)
 			.sort((a, b) => b.n - a.n)
-			.map(({ r }) => r)
 			.slice(0, limit)
-			.map((r) => ({ key: r.key, kind: r.kind, scope: r.scope, personId: r.personId, content: r.content }));
+			.map(({ hit: h }) => h);
+	}
+
+	private active(): Row[] {
+		return [...this.rows].reverse().filter((r) => r.status === "active");
+	}
+
+	private inChannel(r: Row, channelId: string): boolean {
+		return r.channelId === channelId || r.channelId === "";
+	}
+
+	private target(channelId: string, ref: MemoryRef): Row | undefined {
+		return this.rows.find(
+			(r) =>
+				r.key === ref.key &&
+				r.scope === ref.scope &&
+				r.personId === ref.personId &&
+				(ref.scope === "user" || this.inChannel(r, channelId)),
+		);
+	}
+
+	private reaffirm(row: Row): void {
+		row.seenCount += 1;
+		row.updatedAt = this.now();
 	}
 
 	listActive(limit: number): MemoryRecord[] {

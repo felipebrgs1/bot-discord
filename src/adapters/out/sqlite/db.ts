@@ -14,7 +14,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 interface Migration {
 	version: number;
@@ -256,6 +256,63 @@ ALTER TABLE messages ADD COLUMN from_bot INTEGER NOT NULL DEFAULT 0;
 		sql: `
 -- Conversa desde a ultima fala do bot (texto do turno).
 CREATE INDEX messages_channel_bot ON messages(channel_id, from_bot, rowid);
+`,
+	},
+	{
+		version: 7,
+		name: "memory-curation",
+		sql: `
+-- Reafirmacoes sobem a memoria no ranking.
+ALTER TABLE memories ADD COLUMN seen_count INTEGER NOT NULL DEFAULT 1;
+
+-- Memoria de pessoa vale em todos os canais: duplicatas por canal se juntam
+-- na mais recente (as versoes vao junto) e o canal fica ''.
+UPDATE memory_versions SET memory_id = (
+  SELECT keep.rowid FROM memories cur JOIN memories keep
+    ON keep.scope = 'user' AND keep.key = cur.key AND keep.person_id = cur.person_id
+  WHERE cur.rowid = memory_versions.memory_id
+  ORDER BY keep.updated_at DESC, keep.rowid DESC LIMIT 1
+) WHERE memory_id IN (SELECT rowid FROM memories WHERE scope = 'user');
+DELETE FROM memories WHERE scope = 'user' AND rowid <> (
+  SELECT keep.rowid FROM memories keep
+  WHERE keep.scope = 'user' AND keep.key = memories.key AND keep.person_id = memories.person_id
+  ORDER BY keep.updated_at DESC, keep.rowid DESC LIMIT 1
+);
+UPDATE memories SET channel_id = '' WHERE scope = 'user';
+UPDATE memory_versions SET channel_id = '' WHERE scope = 'user';
+CREATE INDEX memories_person ON memories(scope, person_id, status);
+
+-- Episodios por canal (os antigos ficam globais) e com busca.
+CREATE TABLE episodes_new (
+  rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+  channel_id TEXT NOT NULL DEFAULT '',
+  key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE (channel_id, key)
+);
+INSERT INTO episodes_new (key, title, summary, created_at, updated_at)
+  SELECT key, title, summary, created_at, updated_at FROM episodes;
+DROP TABLE episodes;
+ALTER TABLE episodes_new RENAME TO episodes;
+CREATE VIRTUAL TABLE episodes_fts USING fts5(
+  title, summary,
+  content='episodes', content_rowid='rowid',
+  tokenize='unicode61'
+);
+CREATE TRIGGER episodes_fts_insert AFTER INSERT ON episodes BEGIN
+  INSERT INTO episodes_fts(rowid, title, summary) VALUES (new.rowid, new.title, new.summary);
+END;
+CREATE TRIGGER episodes_fts_delete AFTER DELETE ON episodes BEGIN
+  INSERT INTO episodes_fts(episodes_fts, rowid, title, summary) VALUES ('delete', old.rowid, old.title, old.summary);
+END;
+CREATE TRIGGER episodes_fts_update AFTER UPDATE ON episodes BEGIN
+  INSERT INTO episodes_fts(episodes_fts, rowid, title, summary) VALUES ('delete', old.rowid, old.title, old.summary);
+  INSERT INTO episodes_fts(rowid, title, summary) VALUES (new.rowid, new.title, new.summary);
+END;
+INSERT INTO episodes_fts(episodes_fts) VALUES ('rebuild');
 `,
 	},
 ];

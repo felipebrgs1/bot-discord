@@ -9,7 +9,7 @@ function setup(...memories: ExtractedMemory[]) {
 	const souls = new FakeSoulStore();
 	const store = new FakeMemoryStore();
 	const messages = new FakeMessageStore();
-	store.commit("c1", { summary: "", memories, episodes: [] }, 1);
+	store.commit("c1", { summary: "", memories, forget: [], confirm: [], episodes: [] }, 1);
 	return { souls, messages, persona: new Persona(souls, store, messages) };
 }
 

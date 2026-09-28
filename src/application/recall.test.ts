@@ -43,6 +43,8 @@ describe("Recall.searchMemories", () => {
 			{
 				summary: "",
 				memories: [{ key: "jogo", kind: "preference", scope: "user", personId: "u1", content: "ama Terraria" }],
+				forget: [],
+				confirm: [],
 				episodes: [],
 			},
 			1,

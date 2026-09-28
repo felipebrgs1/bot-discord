@@ -90,7 +90,7 @@ describe("botTools", () => {
 		const { run, messages, memories } = setup();
 		messages.append({ channelId: "c1", authorId: "u1", authorName: "ana", messageId: "m1", body: "Terraria hoje" });
 		messages.append({ channelId: "c2", authorId: "u1", authorName: "ana", messageId: "m2", body: "Terraria la" });
-		memories.commit("c1", { summary: "", memories: [{ key: "k", kind: "fact", scope: "group", personId: "", content: "ama Terraria" }], episodes: [] }, 1);
+		memories.commit("c1", { summary: "", memories: [{ key: "k", kind: "fact", scope: "group", personId: "", content: "ama Terraria" }], forget: [], confirm: [], episodes: [] }, 1);
 		expect(await run("search_history", { query: "Terraria", author_id: "u1" })).toContain("Terraria hoje");
 		expect(await run("search_history", { query: "Terraria" })).not.toContain("Terraria la");
 		expect(await run("memory_search", { query: "Terraria" })).toContain("ama Terraria");

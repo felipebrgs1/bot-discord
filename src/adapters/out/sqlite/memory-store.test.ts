@@ -16,6 +16,8 @@ describe("SqliteMemoryStore", () => {
 				{
 					summary: "",
 					memories: [{ key: "a", kind: "fact", scope: "group", personId: "", content: "x" }],
+					forget: [],
+					confirm: [],
 					episodes: [{ key: "e", title: "t", summary: "s" }],
 				},
 				5,

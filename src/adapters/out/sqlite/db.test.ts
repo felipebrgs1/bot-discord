@@ -11,7 +11,7 @@ function memDb(): DatabaseSync {
 describe("migrations", () => {
 	it("applies all migrations and reports the version", () => {
 		const db = memDb();
-		expect(schemaVersion(db)).toBe(6);
+		expect(schemaVersion(db)).toBe(7);
 		const tables = db
 			.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','trigger') ORDER BY name;")
 			.all() as { name: string }[];
@@ -49,7 +49,7 @@ describe("migrations", () => {
 	it("is idempotent", () => {
 		const db = memDb();
 		migrate(db);
-		expect(schemaVersion(db)).toBe(6);
+		expect(schemaVersion(db)).toBe(7);
 		db.close();
 	});
 
@@ -80,6 +80,36 @@ describe("v5 memory-version-ids", () => {
 		expect(rows).toEqual([
 			{ content: "Terraria", memory_id: ana },
 			{ content: "LoL", memory_id: bruno },
+		]);
+		db.close();
+	});
+});
+
+describe("v7 memory-curation", () => {
+	it("memoria de pessoa vira global: duplicatas por canal se juntam na mais recente, com as versoes", () => {
+		const db = new DatabaseSync(":memory:");
+		migrate(db, 6);
+		const insert = db.prepare(
+			"INSERT INTO memories (key, kind, scope, person_id, channel_id, content, updated_at) VALUES (?,?,?,?,?,?,?);",
+		);
+		const old = Number(insert.run("jogo", "fact", "user", "ana", "c1", "Terraria", "2026-01-01").lastInsertRowid);
+		const recent = Number(insert.run("jogo", "fact", "user", "ana", "c2", "Stardew", "2026-02-01").lastInsertRowid);
+		insert.run("regra", "culture", "group", "", "c1", "sextou", "2026-01-01");
+		const version = db.prepare("INSERT INTO memory_versions (memory_id, memory_key, scope, person_id, channel_id, content) VALUES (?,?,?,?,?,?);");
+		version.run(old, "jogo", "user", "ana", "c1", "Terraria");
+		version.run(recent, "jogo", "user", "ana", "c2", "Stardew");
+		db.prepare("INSERT INTO episodes (key, title, summary) VALUES ('saga', 'A saga', 'resumo');").run();
+		migrate(db);
+		expect(db.prepare("SELECT rowid, channel_id, content, seen_count FROM memories WHERE scope = 'user';").all()).toEqual([
+			{ rowid: recent, channel_id: "", content: "Stardew", seen_count: 1 },
+		]);
+		expect(db.prepare("SELECT channel_id FROM memories WHERE scope = 'group';").all()).toEqual([{ channel_id: "c1" }]);
+		expect(db.prepare("SELECT memory_id FROM memory_versions ORDER BY rowid;").all()).toEqual([
+			{ memory_id: recent },
+			{ memory_id: recent },
+		]);
+		expect(db.prepare("SELECT channel_id, key, title FROM episodes;").all()).toEqual([
+			{ channel_id: "", key: "saga", title: "A saga" },
 		]);
 		db.close();
 	});

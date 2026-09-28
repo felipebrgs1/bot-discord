@@ -8,7 +8,8 @@ Hoje o bot ja tem o equivalente da revisao em background do Hermes (consolidacao
 
 - Fase 0: feita.
 - Fase 1: feita. Diferencas do plano: o cabecalho do turno nao tem hora (o dominio nao conhece fuso); `ChatRequest` nao mudou, o texto do turno ja chega pronto; no painel quem fala aparece como "painel".
-- Fases 2 a 5: pendentes.
+- Fase 2: feita. Diferencas do plano: em vez de uma lista `ops`, o extrator devolve `memories` (mesma key = atualiza), `forget` e `confirm`; o `summary` do lote continua descartado (ninguem le ainda); `scripts/memory-eval.ts` nao foi feito.
+- Fases 3 a 5: pendentes.
 
 ## O que vale copiar do Hermes
 

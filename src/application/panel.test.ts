@@ -27,7 +27,7 @@ function setup() {
 		metrics: new FakeMetrics(),
 		logs,
 	});
-	memories.commit("c1", { summary: "", memories: [{ key: "jogo", kind: "fact", scope: "group", personId: "", content: "Terraria" }], episodes: [] }, 1);
+	memories.commit("c1", { summary: "", memories: [{ key: "jogo", kind: "fact", scope: "group", personId: "", content: "Terraria" }], forget: [], confirm: [], episodes: [] }, 1);
 	return { panel, config, souls, memories, forgotten, logCalls };
 }
 

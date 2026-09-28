@@ -1,7 +1,14 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { LearningEvent, MemoryAdmin, MemoryRecord, MemoryVersion } from "../../../application/ports/memory-admin.ts";
 import type { MemoryStore } from "../../../application/ports/memory-store.ts";
-import type { Extraction, FamiliarMemory, MemoryHit, MemoryStatus } from "../../../domain/memory.ts";
+import type {
+	ExtractedMemory,
+	Extraction,
+	FamiliarMemory,
+	MemoryHit,
+	MemoryRef,
+	MemoryStatus,
+} from "../../../domain/memory.ts";
 import { ftsMatch } from "./fts.ts";
 
 interface Row {
@@ -17,8 +24,15 @@ interface Row {
 }
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
+/** Preferencia/licao antes de fato; depois mais reafirmada; depois mais recente. */
+const RANK =
+	"CASE WHEN kind IN ('preference', 'lesson') THEN 0 ELSE 1 END, seen_count DESC, updated_at DESC, rowid DESC";
+const LIMIT = 10;
+const KNOWN_LIMIT = 60;
 
-/** Tabelas `memories` (+FTS5), `memory_versions`, `episodes`, `memory_cursors`. */
+const hit = (r: Row): MemoryHit => ({ key: r.key, kind: r.kind, scope: r.scope, personId: r.person_id, content: r.content });
+
+/** Tabelas `memories` (+FTS5), `memory_versions`, `episodes` (+FTS5), `memory_cursors`. */
 export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 	private readonly db: DatabaseSync;
 
@@ -36,27 +50,25 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 	commit(channelId: string, extraction: Extraction, lastSeq: number): void {
 		this.db.exec("BEGIN;");
 		try {
-			for (const m of extraction.memories) {
-				this.db
-					.prepare(
-						`INSERT INTO memories (key, kind, scope, person_id, channel_id, content, status)
-             VALUES (?,?,?,?,?,?,'active')
-             ON CONFLICT(key, scope, person_id, channel_id) DO UPDATE
-             SET content = excluded.content, kind = excluded.kind, status = 'active', updated_at = ${NOW};`,
-					)
-					.run(m.key, m.kind, m.scope, m.personId, channelId, m.content);
-				const saved = this.db
-					.prepare("SELECT * FROM memories WHERE key = ? AND scope = ? AND person_id = ? AND channel_id = ?;")
-					.get(m.key, m.scope, m.personId, channelId) as unknown as Row;
-				this.addVersion(saved, m.content, "consolidação");
+			for (const m of extraction.memories) this.upsert(channelId, m);
+			for (const f of extraction.forget) {
+				const row = this.target(channelId, f);
+				if (!row) continue;
+				this.db.prepare(`UPDATE memories SET status = 'suppressed', updated_at = ${NOW} WHERE rowid = ?;`).run(row.rowid);
+				this.addVersion(row, row.content, f.reason ? `consolidação: ${f.reason}` : "consolidação");
+			}
+			for (const c of extraction.confirm) {
+				const row = this.target(channelId, c);
+				if (row) this.reaffirm(row.rowid);
 			}
 			for (const ep of extraction.episodes) {
 				this.db
 					.prepare(
-						`INSERT INTO episodes (key, title, summary, updated_at) VALUES (?,?,?,${NOW})
-             ON CONFLICT(key) DO UPDATE SET title = excluded.title, summary = excluded.summary, updated_at = excluded.updated_at;`,
+						`INSERT INTO episodes (channel_id, key, title, summary, updated_at) VALUES (?,?,?,?,${NOW})
+             ON CONFLICT(channel_id, key) DO UPDATE
+             SET title = excluded.title, summary = excluded.summary, updated_at = excluded.updated_at;`,
 					)
-					.run(ep.key, ep.title, ep.summary);
+					.run(channelId, ep.key, ep.title, ep.summary);
 			}
 			this.db
 				.prepare(
@@ -74,20 +86,32 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 		}
 	}
 
+	known(channelId: string, personIds: readonly string[]): MemoryHit[] {
+		const people = personIds.map(() => "?").join(",");
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM memories WHERE status = 'active'
+           AND ((scope = 'group' AND channel_id IN (?, '')) OR (scope = 'user' AND person_id IN (${people || "NULL"})))
+         ORDER BY ${RANK} LIMIT ${KNOWN_LIMIT};`,
+			)
+			.all(channelId, ...personIds) as unknown as Row[];
+		return rows.map(hit);
+	}
+
 	familiar(personId: string, channelId: string): { mine: FamiliarMemory[]; group: FamiliarMemory[] } {
 		const mine = this.db
 			.prepare(
 				`SELECT kind, content FROM memories
-         WHERE status='active' AND scope='user' AND person_id = ? AND (kind='preference' OR kind='lesson')
-         ORDER BY rowid DESC LIMIT 10;`,
+         WHERE status = 'active' AND scope = 'user' AND person_id = ? AND kind IN ('preference', 'lesson', 'fact')
+         ORDER BY ${RANK} LIMIT ${LIMIT};`,
 			)
 			.all(personId) as unknown as FamiliarMemory[];
 		const group = this.db
 			.prepare(
 				`SELECT kind, content FROM memories
-         WHERE status='active' AND scope='group' AND channel_id IN (?, '')
-           AND (kind='preference' OR kind='lesson' OR kind='culture')
-         ORDER BY rowid DESC LIMIT 10;`,
+         WHERE status = 'active' AND scope = 'group' AND channel_id IN (?, '')
+           AND kind IN ('preference', 'lesson', 'culture')
+         ORDER BY ${RANK} LIMIT ${LIMIT};`,
 			)
 			.all(channelId) as unknown as FamiliarMemory[];
 		return { mine: mine.map((m) => ({ ...m })), group: group.map((m) => ({ ...m })) };
@@ -98,13 +122,56 @@ export class SqliteMemoryStore implements MemoryStore, MemoryAdmin {
 		if (!match) return [];
 		const rows = this.db
 			.prepare(
-				`SELECT m.key, m.kind, m.scope, m.person_id, m.content
-         FROM memories_fts f JOIN memories m ON m.rowid = f.rowid
-         WHERE m.status = 'active' AND (m.scope = 'user' OR m.channel_id IN (?, '')) AND memories_fts MATCH ?
-         ORDER BY rank LIMIT ?;`,
+				`SELECT * FROM (
+           SELECT m.key, m.kind, m.scope, m.person_id, m.content, f.rank AS score
+           FROM memories_fts f JOIN memories m ON m.rowid = f.rowid
+           WHERE m.status = 'active' AND (m.scope = 'user' OR m.channel_id IN (?, '')) AND memories_fts MATCH ?
+           UNION ALL
+           SELECT e.key, 'episode', 'group', '', e.title || ': ' || e.summary, f.rank
+           FROM episodes_fts f JOIN episodes e ON e.rowid = f.rowid
+           WHERE e.channel_id IN (?, '') AND episodes_fts MATCH ?
+         ) ORDER BY score LIMIT ?;`,
 			)
-			.all(channelId, match, limit) as unknown as Row[];
-		return rows.map((r) => ({ key: r.key, kind: r.kind, scope: r.scope, personId: r.person_id, content: r.content }));
+			.all(channelId, match, channelId, match, limit) as unknown as Row[];
+		return rows.map(hit);
+	}
+
+	/** Mesma key atualiza; mesmo conteudo ativo so reafirma (sem versao nova). */
+	private upsert(channelId: string, m: ExtractedMemory): void {
+		const home = m.scope === "user" ? "" : channelId;
+		const existing = this.db
+			.prepare("SELECT * FROM memories WHERE key = ? AND scope = ? AND person_id = ? AND channel_id = ?;")
+			.get(m.key, m.scope, m.personId, home) as unknown as Row | undefined;
+		if (existing?.content === m.content && existing.status === "active") {
+			this.reaffirm(existing.rowid);
+			return;
+		}
+		this.db
+			.prepare(
+				`INSERT INTO memories (key, kind, scope, person_id, channel_id, content, status)
+         VALUES (?,?,?,?,?,?,'active')
+         ON CONFLICT(key, scope, person_id, channel_id) DO UPDATE
+         SET content = excluded.content, kind = excluded.kind, status = 'active', updated_at = ${NOW};`,
+			)
+			.run(m.key, m.kind, m.scope, m.personId, home, m.content);
+		const saved = this.db
+			.prepare("SELECT * FROM memories WHERE key = ? AND scope = ? AND person_id = ? AND channel_id = ?;")
+			.get(m.key, m.scope, m.personId, home) as unknown as Row;
+		this.addVersion(saved, m.content, "consolidação");
+	}
+
+	/** Memoria apontada pelo modelo: de pessoa (global) ou do grupo no canal/global. */
+	private target(channelId: string, ref: MemoryRef): Row | undefined {
+		return this.db
+			.prepare(
+				`SELECT * FROM memories WHERE key = ? AND scope = ? AND person_id = ?
+           AND (scope = 'user' OR channel_id IN (?, '')) ORDER BY channel_id DESC LIMIT 1;`,
+			)
+			.get(ref.key, ref.scope, ref.personId, channelId) as unknown as Row | undefined;
+	}
+
+	private reaffirm(rowid: number): void {
+		this.db.prepare(`UPDATE memories SET seen_count = seen_count + 1, updated_at = ${NOW} WHERE rowid = ?;`).run(rowid);
 	}
 
 	listActive(limit: number): MemoryRecord[] {

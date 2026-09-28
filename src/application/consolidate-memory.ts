@@ -1,6 +1,8 @@
 /**
- * Consolidacao: por canal com mensagens novas desde o cursor, o modelo
- * extrai resumo + memorias + episodios; grava tudo e o cursor de uma vez.
+ * Consolidacao: por canal com mensagens novas desde o cursor, o modelo ve o
+ * lote e as memorias atuais (do grupo e de quem falou) e devolve memorias
+ * novas/atualizadas, esquecidas, reafirmadas e episodios; grava tudo e o
+ * cursor de uma vez.
  * Falha do modelo nao avanca o cursor (o lote e tentado de novo depois).
  */
 
@@ -36,15 +38,16 @@ export class ConsolidateMemory {
 		const batch = messages.after(channelId, memories.cursor(channelId), opts.batchSize ?? 10);
 		const last = batch.at(-1);
 		if (!last || batch.length < (opts.minNew ?? 3)) return { consolidated: false, memories: 0 };
+		const people = [...new Set(batch.filter((m) => !m.fromBot).map((m) => m.authorId))];
+		const known = memories.known(channelId, people);
 		let raw: unknown;
 		try {
-			raw = await extractor.complete(extractionPrompt(channelId, batch));
+			raw = await extractor.complete(extractionPrompt(channelId, batch, known));
 		} catch (err) {
 			logger.warn(`consolidação falhou (extração) canal=${channelId}: ${errorText(err)}`);
 			return { consolidated: false, memories: 0 };
 		}
-		const people = batch.filter((m) => !m.fromBot).map((m) => m.authorId);
-		const extraction = validateExtraction(raw, [...new Set(people)]);
+		const extraction = validateExtraction(raw, people, known);
 		memories.commit(channelId, extraction, last.seq);
 		logger.info(`memory_consolidated canal=${channelId} memorias=${extraction.memories.length}`);
 		return { consolidated: true, memories: extraction.memories.length };
