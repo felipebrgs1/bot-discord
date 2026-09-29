@@ -91,6 +91,16 @@ describe("ReplyToMessage: resposta", () => {
 		expect(logger.lines.some((l) => l.startsWith("warn") && l.includes("quebrou"))).toBe(true);
 	});
 
+	it("resposta vazia do agente vira falha, sem mandar mensagem vazia", async () => {
+		const { agent, replies } = setup();
+		agent.answer = async () => "  \n ";
+		const target = new FakeReplyTarget();
+		replies.submit(msg(), target);
+		await replies.idle();
+		expect(target.delivered).toEqual([]);
+		expect(target.failures).toEqual(["falhei aqui: o modelo terminou sem texto de resposta"]);
+	});
+
 	it("erro ao entregar tambem vira falha", async () => {
 		const { replies } = setup();
 		const target = new FakeReplyTarget();

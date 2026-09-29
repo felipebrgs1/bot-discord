@@ -129,6 +129,11 @@ export class SessionPool {
 	async ask(session: AgentSession, text: string, images?: ImageContent[]): Promise<string> {
 		await session.prompt(text, images?.length ? { images } : undefined);
 		if (typeof session.waitForIdle === "function") await session.waitForIdle();
+		// Erro do provedor (rate limit, rede...) fica so na mensagem; sem isso vira resposta vazia.
+		const last = session.messages?.findLast((m) => m.role === "assistant");
+		if (last?.role === "assistant" && last.stopReason === "error") {
+			throw new Error(last.errorMessage ?? "erro do provedor");
+		}
 		return typeof session.getLastAssistantText === "function" ? (session.getLastAssistantText() ?? "") : "";
 	}
 

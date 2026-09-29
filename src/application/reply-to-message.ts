@@ -122,6 +122,7 @@ export class ReplyToMessage {
 					systemPrompt,
 				}),
 			);
+			if (!answer.trim()) throw new Error("o modelo terminou sem texto de resposta");
 			logger.info(`resposta ok canal=${message.channelId} len=${answer.length}`);
 			this.lastReply.set(message.channelId, clock.now());
 			await target.deliver(splitMessage(answer));

@@ -65,6 +65,16 @@ describe("SessionPool", () => {
 		]);
 	});
 
+	it("ask propaga o erro do provedor quando o turno termina em erro", async () => {
+		const pool = new SessionPool(stubFactory().factory);
+		const session = {
+			...stubSession(""),
+			getLastAssistantText: () => undefined,
+			messages: [{ role: "assistant", content: [], stopReason: "error", errorMessage: "429 rate limit" }],
+		} as unknown as AgentSession;
+		await expect(pool.ask(session, "oi")).rejects.toThrow("429 rate limit");
+	});
+
 	it("forget derruba as sessoes da conversa (todos os papeis)", async () => {
 		const { disposed, factory } = stubFactory();
 		const pool = new SessionPool(factory, 60_000);
