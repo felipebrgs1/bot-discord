@@ -37,6 +37,7 @@ import { Persona } from "../application/persona.ts";
 import { Recall } from "../application/recall.ts";
 import { ReplyToMessage } from "../application/reply-to-message.ts";
 import { SearchGames } from "../application/search-games.ts";
+import { parseModelRef } from "../domain/model-ref.ts";
 import { TextCommands } from "../application/text-commands.ts";
 import { WebChat } from "../application/web-chat.ts";
 import { WebResearch } from "../application/web-research.ts";
@@ -101,10 +102,14 @@ export function compose(opts: ComposeOptions) {
 		recall: new Recall(messages, memories),
 		games,
 	};
+	// Modelo da conversa: AGENT_MODEL=provider/id no .env; vazio = padrao do pi.
+	const agentModelText = env("AGENT_MODEL").trim();
+	const agentModel = agentModelText ? parseModelRef(agentModelText) : undefined;
+	if (agentModelText && !agentModel) throw new Error(`AGENT_MODEL inválido: "${agentModelText}" (use provider/id)`);
 	const pool = new SessionPool(
-		opts.sessionFactory ?? piSessionFactory(opts.cwd, (conversationId) => botTools(tools, conversationId), personality),
+		opts.sessionFactory ?? piSessionFactory(opts.cwd, (conversationId) => botTools(tools, conversationId), personality, agentModel),
 	);
-	const agent = new PiChatAgent({ pool, metrics, model: () => config.all().chat.model });
+	const agent = new PiChatAgent({ pool, metrics, model: () => agentModelText });
 	const replies = new ReplyToMessage({
 		agent,
 		clock: systemClock,
@@ -116,7 +121,7 @@ export function compose(opts: ComposeOptions) {
 		systemPromptFor: (channelId) => persona.systemPromptFor(channelId),
 		turnText: (turn) => persona.turnText(turn),
 	});
-	const panel = new Panel({ config, souls, sessions: agent, memories, metrics, logs: log });
+	const panel = new Panel({ config, souls, sessions: agent, memories, metrics, logs: log, agentModel: agentModelText });
 	const webChat = new WebChat({
 		messages,
 		agent,

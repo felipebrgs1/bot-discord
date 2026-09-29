@@ -17,6 +17,8 @@ export interface PanelDeps {
 	memories: MemoryAdmin;
 	metrics: MetricsQuery;
 	logs: LogFeed;
+	/** Modelo da conversa (AGENT_MODEL); vazio = padrao do pi. */
+	agentModel: string;
 }
 
 export interface DiscordForm {
@@ -47,7 +49,7 @@ export class Panel {
 
 	meta(): { model: string; role: Role } {
 		const s = this.deps.config.all();
-		return { model: s.chat.model || "(padrão do pi)", role: roleOf(s.dashboard.web_user_id, s.discord.admin_ids) };
+		return { model: this.deps.agentModel || "(padrão do pi)", role: roleOf(s.dashboard.web_user_id, s.discord.admin_ids) };
 	}
 
 	logs(after: number, limit?: number): { entries: LogEntry[]; cursor: number } {

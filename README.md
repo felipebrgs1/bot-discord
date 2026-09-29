@@ -56,7 +56,8 @@ Arquivo `apps/bot/.env`:
 | Variavel | Descricao |
 |---|---|
 | `DISCORD_TOKEN` | Obrigatorio. Token do bot. |
-| `CHAT_API_KEY` ou `OPENCODE_API_KEY` | Chave do modelo usado na consolidacao de memoria. |
+| `AGENT_MODEL` | Modelo da conversa, `provider/id` do pi (ex.: `openai-codex/gpt-6-luna`). Vazio = padrao do pi. Vale ao reiniciar. |
+| `CHAT_API_KEY` ou `OPENCODE_API_KEY` | Chave do modelo usado na consolidacao de memoria (o modelo e o campo do painel). |
 | `DASHBOARD_PASSWORD` | Senha do painel. |
 | `DASHBOARD_PORT` | Porta do painel (padrao 8080; 0 desliga). |
 | `DASHBOARD_HOST` | Host do painel (padrao `127.0.0.1`). |

@@ -32,7 +32,7 @@ function setup(password = "") {
 	const metrics = new FakeMetrics();
 	let n = 0;
 	const handler = createPanelHandler({
-		panel: new Panel({ config, souls, sessions: agent, memories, metrics, logs: { after: () => ({ entries: [], cursor: 0 }) } }),
+		panel: new Panel({ config, souls, sessions: agent, memories, metrics, logs: { after: () => ({ entries: [], cursor: 0 }) }, agentModel: "" }),
 		chat: new WebChat({
 			messages,
 			agent,
@@ -259,9 +259,9 @@ describe("config", () => {
 		});
 	});
 
-	it("model: PUT troca, GET mostra", async () => {
+	it("model (consolidacao): PUT troca e pede reinicio, GET mostra", async () => {
 		const { handler } = setup();
-		expect(j(await request(handler, "PUT", "/api/model", { body: { model: "x-model" } }))).toEqual({ model: "x-model", restart_required: false });
+		expect(j(await request(handler, "PUT", "/api/model", { body: { model: "x-model" } }))).toEqual({ model: "x-model", restart_required: true });
 		expect(j(await request(handler, "GET", "/api/models"))).toEqual({ models: [], model: "x-model" });
 	});
 

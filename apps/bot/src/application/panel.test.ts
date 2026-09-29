@@ -7,7 +7,7 @@ import { FakeSoulStore } from "../test-support/fakes/soul-store.ts";
 import { Panel } from "./panel.ts";
 import type { LogFeed } from "./ports/log-feed.ts";
 
-function setup() {
+function setup(agentModel = "") {
 	const config = new FakeConfigStore();
 	const souls = new FakeSoulStore();
 	const memories = new FakeMemoryStore();
@@ -26,19 +26,27 @@ function setup() {
 		memories,
 		metrics: new FakeMetrics(),
 		logs,
+		agentModel,
 	});
 	memories.commit("c1", { summary: "", memories: [{ key: "jogo", kind: "fact", scope: "group", personId: "", content: "Terraria" }], forget: [], confirm: [], episodes: [] }, 1);
 	return { panel, config, souls, memories, forgotten, logCalls };
 }
 
 describe("Panel.meta", () => {
-	it("modelo do config (ou o padrao do pi) e papel do usuario do painel", () => {
+	it("modelo da conversa (AGENT_MODEL ou padrao do pi) e papel do usuario do painel", () => {
 		const { panel, config } = setup();
 		expect(panel.meta()).toEqual({ model: "(padrão do pi)", role: "user" });
-		config.set("chat.model", "m1");
 		config.set("discord.admin_ids", ["dono"]);
 		config.set("dashboard.web_user_id", "dono");
-		expect(panel.meta()).toEqual({ model: "m1", role: "admin" });
+		expect(panel.meta()).toEqual({ model: "(padrão do pi)", role: "admin" });
+		expect(setup("openai-codex/gpt-6-luna").panel.meta().model).toBe("openai-codex/gpt-6-luna");
+	});
+
+	it("chat.model do config e o da consolidacao, nao o da conversa", () => {
+		const { panel, config } = setup("p/conversa");
+		config.set("chat.model", "consolidacao");
+		expect(panel.meta().model).toBe("p/conversa");
+		expect(panel.model()).toBe("consolidacao");
 	});
 });
 

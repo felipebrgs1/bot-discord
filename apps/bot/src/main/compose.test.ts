@@ -53,6 +53,18 @@ function call(handler: (req: IncomingMessage, res: ServerResponse) => void, meth
 	});
 }
 
+describe("compose: AGENT_MODEL", () => {
+	it("formato sem provider/ impede subir", () => {
+		expect(() => build({ AGENT_MODEL: "gpt-6-luna" })).toThrow("AGENT_MODEL");
+	});
+
+	it("vira o modelo mostrado no painel", async () => {
+		const app = build({ AGENT_MODEL: "openai-codex/gpt-6-luna" });
+		const meta = JSON.parse(await call(app.panelHandler(), "GET", "/api/meta")) as { model: string };
+		expect(meta.model).toBe("openai-codex/gpt-6-luna");
+	});
+});
+
 describe("compose", () => {
 	it("chat do painel passa pelo agente, grava historico e metrica no SQLite", async () => {
 		const app = build();

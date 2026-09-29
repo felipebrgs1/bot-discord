@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Role } from "../../../domain/roles.ts";
-import { botResourceLoader, excludedToolsFor, type SessionFactory, SessionPool } from "./session-pool.ts";
+import { botResourceLoader, excludedToolsFor, resolveModel, type SessionFactory, SessionPool } from "./session-pool.ts";
 
 function stubSession(answer: string, calls: unknown[][] = []): AgentSession {
 	return {
@@ -32,6 +32,26 @@ describe("excludedToolsFor", () => {
 	it("admin ve tudo; user nao encosta em shell nem arquivo", () => {
 		expect(excludedToolsFor("admin")).toEqual([]);
 		expect(excludedToolsFor("user")).toEqual(["bash", "powershell", "edit", "write", "read", "grep", "find", "ls"]);
+	});
+});
+
+describe("resolveModel", () => {
+	const catalog = {
+		getModel: (provider: string, id: string) => (provider === "openai-codex" && id === "gpt-6-luna" ? { provider, id } : undefined),
+		hasConfiguredAuth: (provider: string) => provider === "openai-codex",
+	};
+
+	it("devolve o modelo do catalogo do pi", () => {
+		expect(resolveModel(catalog, { provider: "openai-codex", id: "gpt-6-luna" })).toEqual({ provider: "openai-codex", id: "gpt-6-luna" });
+	});
+
+	it("modelo desconhecido lanca com o nome", () => {
+		expect(() => resolveModel(catalog, { provider: "openai-codex", id: "gpt-x" })).toThrow("AGENT_MODEL openai-codex/gpt-x não existe no pi");
+	});
+
+	it("provider sem credencial lanca pedindo login", () => {
+		const noAuth = { ...catalog, hasConfiguredAuth: () => false };
+		expect(() => resolveModel(noAuth, { provider: "openai-codex", id: "gpt-6-luna" })).toThrow("sem credencial para openai-codex");
 	});
 });
 

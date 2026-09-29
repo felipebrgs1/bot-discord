@@ -93,7 +93,7 @@ export default function ConfigView({ active, onSaved }: { active: boolean; onSav
 
   return (
     <div className="flex h-full flex-col">
-      <ViewHeader title="Config" meta={dirty ? <span className="text-warning">alterações não salvas</span> : "discord, personalidade e modelo"}>
+      <ViewHeader title="Config" meta={dirty ? <span className="text-warning">alterações não salvas</span> : "discord, personalidade e consolidação"}>
         <Button size="sm" variant="ghost" disabled={!dirty || busy} onClick={() => setDraft(saved)}>
           <RotateCcwIcon /> descartar
         </Button>
@@ -132,9 +132,9 @@ export default function ConfigView({ active, onSaved }: { active: boolean; onSav
               </Field>
             </Section>
 
-            <Section title="agente" hint="Modelo vale na próxima sessão; personalidade derruba as sessões abertas.">
-              <Field id="model" label="modelo" hint="vazio = padrão do pi">
-                <Input id="model" list="model-catalog" value={draft.model} onChange={(e) => set({ model: e.target.value })} placeholder="(padrão do pi)" className="font-mono" />
+            <Section title="agente" hint="O modelo da conversa vem do AGENT_MODEL no .env. Personalidade derruba as sessões abertas.">
+              <Field id="model" label="modelo da consolidação" hint="extração de memória; vale ao reiniciar">
+                <Input id="model" list="model-catalog" value={draft.model} onChange={(e) => set({ model: e.target.value })} placeholder="provider/modelo" className="font-mono" />
                 <datalist id="model-catalog">
                   {models.map((m) => (
                     <option key={m} value={m} />

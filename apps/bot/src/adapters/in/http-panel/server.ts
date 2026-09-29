@@ -253,7 +253,7 @@ export function createPanelHandler(deps: PanelServerDeps): (req: IncomingMessage
 		if (path === "/api/model" && method === "PUT") {
 			const model = str((await readBody(req))["model"]) ?? "";
 			panel.setModel(model);
-			return json<Api.ModelChanged>(res, 200, { model, restart_required: false });
+			return json<Api.ModelChanged>(res, 200, { model, restart_required: true });
 		}
 		return fail(res, 404, "rota desconhecida");
 	}

@@ -3,15 +3,17 @@
  * criada com tools de admin. Criada sob demanda, descartada quando ociosa.
  */
 
-import type { ImageContent } from "@earendil-works/pi-ai";
+import type { Api, ImageContent, Model } from "@earendil-works/pi-ai";
 import {
 	type AgentSession,
 	createAgentSession,
 	DefaultResourceLoader,
 	getAgentDir,
+	ModelRuntime,
 	SessionManager,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { formatModelRef, type ModelRef } from "../../../domain/model-ref.ts";
 import { canUseHostTools, type Role } from "../../../domain/roles.ts";
 
 /** Tools nativas do pi que mexem na maquina do bot. */
@@ -56,18 +58,50 @@ export interface SessionFactory {
 	dispose(session: AgentSession): void;
 }
 
-/** Fabrica real (auth/modelo do ~/.pi/agent; chave de API do ambiente). */
+/** O que resolveModel precisa do catalogo do pi (ModelRuntime). */
+export interface ModelCatalog<M> {
+	getModel(provider: string, id: string): M | undefined;
+	hasConfiguredAuth(provider: string): boolean;
+}
+
+/** Modelo do catalogo do pi; lanca com mensagem acionavel se nao existe ou falta login. */
+export function resolveModel<M>(catalog: ModelCatalog<M>, ref: ModelRef): M {
+	const model = catalog.getModel(ref.provider, ref.id);
+	if (!model) throw new Error(`AGENT_MODEL ${formatModelRef(ref)} não existe no pi`);
+	if (!catalog.hasConfiguredAuth(ref.provider)) {
+		throw new Error(`sem credencial para ${ref.provider}: rode \`pi\` e faça /login ou configure a chave`);
+	}
+	return model;
+}
+
+/**
+ * Fabrica real (auth do ~/.pi/agent; chave de API do ambiente). Com `model`
+ * (AGENT_MODEL), toda sessao usa esse modelo; sem, vale o padrao do pi.
+ */
 export function piSessionFactory(
 	cwd: string,
 	toolsFor: (conversationId: string, role: Role) => ToolDefinition[],
 	personality: () => string,
+	model?: ModelRef,
 ): SessionFactory {
+	// Catalogo carregado uma vez; falha nao fica em cache (login feito depois vale).
+	let pinned: Promise<{ modelRuntime: ModelRuntime; model: Model<Api> }> | undefined;
+	const pin = (ref: ModelRef) =>
+		(pinned ??= ModelRuntime.create()
+			.then((modelRuntime) => ({ modelRuntime, model: resolveModel(modelRuntime, ref) }))
+			.catch((err: unknown) => {
+				pinned = undefined;
+				throw err;
+			}));
+
 	return {
 		async create(conversationId, role, systemPrompt) {
+			const chosen = model ? await pin(model) : {};
 			const loader = botResourceLoader({ cwd, agentDir: getAgentDir(), personality: personality(), extra: systemPrompt });
 			await loader.reload();
 			const { session } = await createAgentSession({
 				cwd,
+				...chosen,
 				resourceLoader: loader,
 				sessionManager: SessionManager.inMemory(),
 				excludeTools: excludedToolsFor(role),
@@ -170,3 +204,4 @@ export class SessionPool {
 		}
 	}
 }
+
