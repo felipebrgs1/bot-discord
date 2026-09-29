@@ -2,6 +2,38 @@
 
 Bot de Discord sobre o SDK do pi (`@earendil-works/pi-coding-agent`). Arquitetura hexagonal, TDD obrigatorio.
 
+## Monorepo
+
+Workspaces do Bun orquestrados pelo Turborepo.
+
+```
+apps/
+  bot/        o bot (hexagonal, abaixo). Caminhos `src/...` deste arquivo sao relativos a apps/bot.
+  web/        painel React (Vite) + worker.ts (Cloudflare: login e proxy de /api)
+packages/
+  api/        contrato HTTP do painel: so tipos, importados pelo bot, pelo worker e pelo front
+  tsconfig/   base estrita compartilhada (base.json)
+```
+
+- Mudou uma rota ou resposta do painel: muda primeiro `packages/api`, depois servidor (`apps/bot/src/adapters/in/http-panel`) e front. O `check` pega o lado que ficou para tras.
+- Nenhum app importa outro app. Codigo compartilhado vira pacote em `packages/`.
+- Do ponto de vista do bot, `@elmatadore/api` e um pacote externo: so `adapters` importam.
+
+### Painel (apps/web)
+
+```
+src/
+  lib/        logica pura com teste: cliente da API (fetch injetado), SSE, filtros, formatacao, nav
+  app/        App, login, contexto da API
+  features/   uma pasta por tela: chat, memory, logs, metrics, config
+  components/ ui/ (shadcn), shell/ (trilho, cabecalho, barra de status) e primitivas
+  hooks/      polling, hash, atalhos
+```
+
+- Regra de tela nasce em `lib/` com teste (`bun:test`, sem DOM). Componente so liga estado e `lib`.
+- O cliente recebe `fetch` por parametro; teste usa fetch falso escrito a mao. Proibido stub de `globalThis.fetch`.
+- Cor so por token de `index.css` (tema escuro e o padrao); nada de hex em componente.
+
 ## Estilo
 
 - Respostas curtas e diretas. Sem emojis em codigo, commits ou docs.
@@ -26,7 +58,7 @@ Regras:
 - Teste descreve comportamento, nao implementacao. Nomes em frases: `it("ignora mensagens de bots")`.
 - Testes usam `bun:test`. Proibido `mock.module`/`vi.mock` e stub de global (inclusive `globalThis.fetch`): dependencias entram por porta e sao trocadas por fakes escritos a mao.
 - Testes nao usam rede, Discord real, LLM real nem o relogio real. Tempo entra pela porta `Clock`.
-- Ao final de cada tarefa: `bun run check` e `bun test` verdes, saida completa, sem warnings.
+- Ao final de cada tarefa: `bun run check` e `bun run test` na raiz verdes (todos os pacotes), saida completa, sem warnings.
 
 Onde testar cada camada:
 
@@ -128,14 +160,23 @@ Portas de saida: `ChatAgent`, `ChatSessions`, `Clock`, `ConfigStore`, `GameCatal
 
 Runtime, gerenciador de pacotes e test runner: Bun. O Bun roda o `.ts` direto, sem build.
 
+Na raiz (turbo roda em todos os pacotes):
+
 ```bash
 bun install
-bun run check                      # tsc --noEmit (TypeScript 7)
-bun test                           # src/ (bunfig.toml)
-bun test src/caminho.test.ts
-bun test -t "nome do teste"
-bun run --cwd web test             # painel: bun test
-bun start                          # bun src/main/run.ts
+bun run check                      # tsc --noEmit em cada pacote (TypeScript 7)
+bun run test                       # bun test em cada pacote
+bun run build                      # build do painel (apps/web/dist)
+bun run dev                        # painel em modo dev (vite, proxy /api -> :8080)
+bun start                          # sobe o bot (apps/bot)
+```
+
+Dentro de um pacote:
+
+```bash
+cd apps/bot && bun test src/caminho.test.ts
+cd apps/bot && bun test -t "nome do teste"
+cd apps/web && bun test
 ```
 
 - Script ad-hoc: arquivo temporario, rodar, apagar.
@@ -144,7 +185,7 @@ bun start                          # bun src/main/run.ts
 
 - Versoes exatas. `@earendil-works/pi-ai` e `@earendil-works/pi-coding-agent` sempre na mesma versao.
 - Mudanca de dependencia ou lockfile e codigo revisado: dizer o que mudou e por que.
-- Atualizar o pi: subir as duas versoes, `bun install`, `bun run check && bun test`, ler o CHANGELOG do pi no intervalo.
+- Atualizar o pi: subir as duas versoes em `apps/bot/package.json`, `bun install`, `bun run check && bun run test`, ler o CHANGELOG do pi no intervalo.
 - O Bun nao roda scripts de lifecycle de dependencias fora de `trustedDependencies`. Adicionar la so com revisao.
 
 ## Git
@@ -152,4 +193,4 @@ bun start                          # bun src/main/run.ts
 - Commit so quando o usuario pedir.
 - Stage por caminho explicito. Nunca `git add -A`, `git reset --hard`, `git push --force`, `--no-verify`.
 - Mensagem: `tipo(escopo): descricao`, tipos `feat|fix|refactor|test|docs|chore`. Ex.: `refactor(memory): extrai porta MemoryStore`.
-- Segredos (`.env`, tokens) e `data/` nunca entram no git.
+- Segredos (`.env`, tokens) e `data/` nunca entram no git (ficam em `apps/bot/`).

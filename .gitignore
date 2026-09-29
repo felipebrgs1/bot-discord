@@ -1,6 +1,6 @@
 node_modules/
 dist/
+.turbo/
 .env
 data/
 outbox/
-web/dist/

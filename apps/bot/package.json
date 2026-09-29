@@ -1,0 +1,25 @@
+{
+	"name": "@elmatadore/bot",
+	"version": "0.1.0",
+	"description": "Discord bot built on the pi SDK: gateway + SQLite memory",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "bun src/main/run.ts",
+		"check": "tsc --noEmit",
+		"test": "bun test"
+	},
+	"author": "felipebrgs1",
+	"license": "MIT",
+	"dependencies": {
+		"@earendil-works/pi-ai": "0.87.1",
+		"@earendil-works/pi-coding-agent": "0.87.1",
+		"@elmatadore/api": "workspace:*",
+		"discord.js": "14.27.0",
+		"dotenv": "18.0.4"
+	},
+	"devDependencies": {
+		"@elmatadore/tsconfig": "workspace:*",
+		"@types/bun": "1.4.2"
+	}
+}
