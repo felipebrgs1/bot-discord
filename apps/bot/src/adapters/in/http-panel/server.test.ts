@@ -12,9 +12,11 @@ import { FakeMemoryStore } from "../../../test-support/fakes/memory-store.ts";
 import { FakeMessageStore } from "../../../test-support/fakes/message-store.ts";
 import { FakeMetrics } from "../../../test-support/fakes/metrics.ts";
 import { FakeSoulStore } from "../../../test-support/fakes/soul-store.ts";
+import { FakeSubAgents } from "../../../test-support/fakes/sub-agents.ts";
+import { Swarm } from "../../../application/swarm.ts";
 import { createPanelHandler } from "./server.ts";
 
-function setup(password = "") {
+function setup(password = "", config = new FakeConfigStore()) {
 	const live = new Set<string>();
 	const agent: ChatAgent & ChatSessions = {
 		ask: async (r) => {
@@ -25,17 +27,23 @@ function setup(password = "") {
 		conversations: () => [...live],
 		forget: (c) => void live.delete(c),
 	};
-	const config = new FakeConfigStore();
 	const souls = new FakeSoulStore();
 	const memories = new FakeMemoryStore();
 	const messages = new FakeMessageStore();
 	const metrics = new FakeMetrics();
+	const workers = new FakeSubAgents();
+	workers.answer = async (task) => {
+		if (!task.tools) return '{"tasks": ["A"]}';
+		task.onToolStep?.({ tool: "web_fetch", args: "{}", output: "pagina", durationMs: 1 });
+		return "achei";
+	};
 	let n = 0;
 	const handler = createPanelHandler({
 		panel: new Panel({ config, souls, sessions: agent, memories, metrics, logs: { after: () => ({ entries: [], cursor: 0 }) }, agentModel: "" }),
 		chat: new WebChat({
 			messages,
 			agent,
+			swarm: new Swarm(workers),
 			config,
 			persona: new Persona(souls, memories, messages),
 			clock: new FakeClock(0),
@@ -191,6 +199,22 @@ describe("chat web", () => {
 
 		expect((await request(handler, "DELETE", "/api/chat/sessions/sABC123")).status).toBe(204);
 		expect((j(await request(handler, "GET", "/api/chat/sessions")) as { sessions: unknown[] }).sessions).toEqual([]);
+	});
+
+	it("/swarm de admin: passos dos workers chegam com o numero do agente", async () => {
+		const { handler } = setup("", new FakeConfigStore({ discord: { admin_ids: ["dono"] }, dashboard: { web_user_id: "dono" } }));
+		const post = await request(handler, "POST", "/api/chat/sessions/s1/messages", { body: { content: "/swarm pesquisa A" } });
+		const evs = frames(post);
+		expect(evs.map((e) => e.event)).toEqual(["accepted", "step", "step", "done"]);
+		expect(evs[1]?.data).toEqual({ tool: "web_fetch", args: "{}", output: "pagina", duration_ms: 1, agent: 1 });
+		expect(evs[2]?.data).toEqual({ tool: "web_search", args: '{"query":"x"}', output: "achado", duration_ms: 2 });
+	});
+
+	it("/swarm de quem nao e admin vira evento de erro", async () => {
+		const { handler } = setup();
+		const evs = frames(await request(handler, "POST", "/api/chat/sessions/s1/messages", { body: { content: "/swarm pesquisa A" } }));
+		expect(evs.map((e) => e.event)).toEqual(["error"]);
+		expect(evs[0]?.data).toEqual({ message: "/swarm é só para admin" });
 	});
 
 	it("rejeita sessao invalida e mensagem vazia", async () => {

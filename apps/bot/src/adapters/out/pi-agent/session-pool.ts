@@ -15,6 +15,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { formatModelRef, type ModelRef } from "../../../domain/model-ref.ts";
 import { canUseHostTools, type Role } from "../../../domain/roles.ts";
+import type { WorkerFactory } from "./pi-sub-agents.ts";
 
 /** Tools nativas do pi que mexem na maquina do bot. */
 const PI_HOST_TOOLS = ["bash", "powershell", "edit", "write", "read", "grep", "find", "ls"];
@@ -74,49 +75,90 @@ export function resolveModel<M>(catalog: ModelCatalog<M>, ref: ModelRef): M {
 	return model;
 }
 
-/**
- * Fabrica real (auth do ~/.pi/agent; chave de API do ambiente). Com `model`
- * (AGENT_MODEL), toda sessao usa esse modelo; sem, vale o padrao do pi.
- */
-export function piSessionFactory(
-	cwd: string,
-	toolsFor: (conversationId: string, role: Role) => ToolDefinition[],
-	personality: () => string,
-	model?: ModelRef,
-): SessionFactory {
-	// Catalogo carregado uma vez; falha nao fica em cache (login feito depois vale).
-	let pinned: Promise<{ modelRuntime: ModelRuntime; model: Model<Api> }> | undefined;
-	const pin = (ref: ModelRef) =>
-		(pinned ??= ModelRuntime.create()
-			.then((modelRuntime) => ({ modelRuntime, model: resolveModel(modelRuntime, ref) }))
+type Pinned = { modelRuntime: ModelRuntime; model: Model<Api> } | Record<string, never>;
+
+/** Catalogo do pi carregado uma vez; falha nao fica em cache (login feito depois vale). */
+function modelPin(model?: ModelRef): () => Promise<Pinned> {
+	let pinned: Promise<Pinned> | undefined;
+	return () => {
+		if (!model) return Promise.resolve({});
+		return (pinned ??= ModelRuntime.create()
+			.then((modelRuntime) => ({ modelRuntime, model: resolveModel(modelRuntime, model) }))
 			.catch((err: unknown) => {
 				pinned = undefined;
 				throw err;
 			}));
+	};
+}
 
+interface OpenOptions {
+	cwd: string;
+	pin: () => Promise<Pinned>;
+	personality: string;
+	extra?: string;
+	role: Role;
+	tools: ToolDefinition[];
+}
+
+async function openSession(opts: OpenOptions): Promise<AgentSession> {
+	const chosen = await opts.pin();
+	const loader = botResourceLoader({ cwd: opts.cwd, agentDir: getAgentDir(), personality: opts.personality, extra: opts.extra });
+	await loader.reload();
+	const { session } = await createAgentSession({
+		cwd: opts.cwd,
+		...chosen,
+		resourceLoader: loader,
+		sessionManager: SessionManager.inMemory(),
+		excludeTools: excludedToolsFor(opts.role),
+		customTools: opts.tools,
+	});
+	return session;
+}
+
+function disposeSession(session: AgentSession): void {
+	try {
+		session.dispose();
+	} catch {
+		/* ja descartada */
+	}
+}
+
+/**
+ * Fabricas reais (auth do ~/.pi/agent; chave de API do ambiente). Com `model`
+ * (AGENT_MODEL), toda sessao usa esse modelo; sem, vale o padrao do pi.
+ */
+export function piSessionFactories(
+	cwd: string,
+	toolsFor: (conversationId: string, role: Role) => ToolDefinition[],
+	personality: () => string,
+	model?: ModelRef,
+): { conversations: SessionFactory; workers: WorkerFactory } {
+	const pin = modelPin(model);
 	return {
-		async create(conversationId, role, systemPrompt) {
-			const chosen = model ? await pin(model) : {};
-			const loader = botResourceLoader({ cwd, agentDir: getAgentDir(), personality: personality(), extra: systemPrompt });
-			await loader.reload();
-			const { session } = await createAgentSession({
-				cwd,
-				...chosen,
-				resourceLoader: loader,
-				sessionManager: SessionManager.inMemory(),
-				excludeTools: excludedToolsFor(role),
-				customTools: toolsFor(conversationId, role),
-			});
-			return session;
+		conversations: {
+			create: (conversationId, role, systemPrompt) =>
+				openSession({ cwd, pin, personality: personality(), extra: systemPrompt, role, tools: toolsFor(conversationId, role) }),
+			dispose: disposeSession,
 		},
-		dispose(session) {
-			try {
-				session.dispose();
-			} catch {
-				/* ja descartada */
-			}
+		// Worker do swarm: sem persona e sempre como user (nada de shell ou arquivo).
+		workers: {
+			create: (conversationId, instructions, tools) =>
+				openSession({ cwd, pin, personality: instructions, role: "user", tools: tools ? toolsFor(conversationId, "user") : [] }),
+			dispose: disposeSession,
 		},
 	};
+}
+
+/** Pergunta e devolve o texto final do assistente; erro do provedor lanca. */
+export async function askSession(session: AgentSession, text: string, images?: ImageContent[]): Promise<string> {
+	await session.prompt(text, images?.length ? { images } : undefined);
+	if (typeof session.waitForIdle === "function") await session.waitForIdle();
+	// Erro do provedor (rate limit, rede...) fica so na mensagem; sem isso vira resposta vazia.
+	const last = session.messages?.findLast((m) => m.role === "assistant");
+	if (last?.role === "assistant" && last.stopReason === "error") {
+		throw new Error(last.errorMessage ?? "erro do provedor");
+	}
+	return typeof session.getLastAssistantText === "function" ? (session.getLastAssistantText() ?? "") : "";
 }
 
 interface Entry {
@@ -160,15 +202,8 @@ export class SessionPool {
 	}
 
 	/** Pergunta e devolve o texto final do assistente. */
-	async ask(session: AgentSession, text: string, images?: ImageContent[]): Promise<string> {
-		await session.prompt(text, images?.length ? { images } : undefined);
-		if (typeof session.waitForIdle === "function") await session.waitForIdle();
-		// Erro do provedor (rate limit, rede...) fica so na mensagem; sem isso vira resposta vazia.
-		const last = session.messages?.findLast((m) => m.role === "assistant");
-		if (last?.role === "assistant" && last.stopReason === "error") {
-			throw new Error(last.errorMessage ?? "erro do provedor");
-		}
-		return typeof session.getLastAssistantText === "function" ? (session.getLastAssistantText() ?? "") : "";
+	ask(session: AgentSession, text: string, images?: ImageContent[]): Promise<string> {
+		return askSession(session, text, images);
 	}
 
 	conversations(): string[] {

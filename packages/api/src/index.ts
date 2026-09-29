@@ -64,6 +64,8 @@ export interface ChatStep {
 	args: string;
 	output: string;
 	duration_ms: number;
+	/** Worker do `/swarm` (1..4) que usou a tool; ausente no agente da conversa. */
+	agent?: number;
 }
 
 export interface SendChatRequest {

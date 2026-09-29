@@ -4,11 +4,13 @@ import { FakeConfigStore } from "../test-support/fakes/config-store.ts";
 import { FakeMemoryStore } from "../test-support/fakes/memory-store.ts";
 import { FakeMessageStore } from "../test-support/fakes/message-store.ts";
 import { FakeSoulStore } from "../test-support/fakes/soul-store.ts";
+import { FakeSubAgents } from "../test-support/fakes/sub-agents.ts";
 import { Persona } from "./persona.ts";
 import type { ChatAgent, ChatRequest, ChatSessions, ToolStep } from "./ports/chat-agent.ts";
+import { Swarm } from "./swarm.ts";
 import { WebChat } from "./web-chat.ts";
 
-function setup(answer: (r: ChatRequest) => Promise<string> = async () => "resposta bot") {
+function setup(answer: (r: ChatRequest) => Promise<string> = async () => "resposta bot", webUser = "dono") {
 	const asked: ChatRequest[] = [];
 	const live = new Set<string>();
 	const agent: ChatAgent & ChatSessions = {
@@ -24,16 +26,23 @@ function setup(answer: (r: ChatRequest) => Promise<string> = async () => "respos
 	const souls = new FakeSoulStore();
 	souls.ensureSeed("sou o bot");
 	const messages = new FakeMessageStore();
+	const workers = new FakeSubAgents();
+	workers.answer = async (task) => {
+		if (!task.tools) return '{"tasks": ["A", "B"]}';
+		task.onToolStep?.({ tool: "web_fetch", args: "{}", output: task.text, durationMs: 2 });
+		return `achei ${task.text}`;
+	};
 	let n = 0;
 	const chat = new WebChat({
 		messages,
 		agent,
-		config: new FakeConfigStore({ discord: { admin_ids: ["dono"] }, dashboard: { web_user_id: "dono" } }),
+		swarm: new Swarm(workers),
+		config: new FakeConfigStore({ discord: { admin_ids: ["dono"] }, dashboard: { web_user_id: webUser } }),
 		persona: new Persona(souls, new FakeMemoryStore(), messages),
 		clock: new FakeClock(Date.parse("2026-09-27T12:00:00.000Z")),
 		newId: () => `web-${++n}`,
 	});
-	return { chat, asked, messages, live };
+	return { chat, asked, messages, live, workers };
 }
 
 const noEvents = { accepted: () => undefined, step: () => undefined };
@@ -85,6 +94,40 @@ describe("WebChat.send", () => {
 		});
 		await expect(chat.send("s1", "oi", noEvents)).rejects.toThrow("modelo caiu");
 		expect(messages.messages.map((m) => m.authorId)).toEqual(["web"]);
+	});
+});
+
+describe("WebChat.send com /swarm", () => {
+	it("admin: roda o swarm, repassa os passos por agente e o agente da conversa junta os resultados", async () => {
+		const { chat, asked, messages, workers } = setup();
+		const steps: ToolStep[] = [];
+		const bot = await chat.send("s1", "/swarm compara A e B", { accepted: () => undefined, step: (s) => void steps.push(s) });
+		expect(workers.tasks.map((t) => t.text)).toEqual(["compara A e B", "A", "B"]);
+		expect(steps.map((s) => [s.agent, s.tool])).toEqual([
+			[1, "web_fetch"],
+			[2, "web_fetch"],
+			[undefined, "web_search"],
+		]);
+		expect(asked).toHaveLength(1);
+		expect(asked[0]?.channelId).toBe("web:s1");
+		expect(asked[0]?.text).toContain("### Agente 1: A\nachei A");
+		expect(asked[0]?.text).toContain("### Agente 2: B\nachei B");
+		expect(bot.body).toBe("resposta bot");
+		expect(messages.messages.map((m) => m.body)).toEqual(["/swarm compara A e B", "resposta bot"]);
+	});
+
+	it("quem nao e admin e recusado antes de gravar", async () => {
+		const { chat, asked, messages, workers } = setup(undefined, "outro");
+		await expect(chat.send("s1", "/swarm compara A e B", noEvents)).rejects.toThrow("/swarm é só para admin");
+		expect(workers.tasks).toEqual([]);
+		expect(asked).toEqual([]);
+		expect(messages.messages).toEqual([]);
+	});
+
+	it("mensagem comum nao aciona o swarm", async () => {
+		const { chat, workers } = setup();
+		await chat.send("s1", "oi", noEvents);
+		expect(workers.tasks).toEqual([]);
 	});
 });
 

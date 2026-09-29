@@ -15,7 +15,8 @@ import { FsOutbox } from "../adapters/out/fs/outbox.ts";
 import { ChatJsonExtractor } from "../adapters/out/llm/chat-json-extractor.ts";
 import { LogBuffer } from "../adapters/out/log/log-buffer.ts";
 import { PiChatAgent } from "../adapters/out/pi-agent/pi-chat-agent.ts";
-import { piSessionFactory, type SessionFactory, SessionPool } from "../adapters/out/pi-agent/session-pool.ts";
+import { PiSubAgents, type WorkerFactory } from "../adapters/out/pi-agent/pi-sub-agents.ts";
+import { piSessionFactories, type SessionFactory, SessionPool } from "../adapters/out/pi-agent/session-pool.ts";
 import { SqliteConfigStore } from "../adapters/out/sqlite/config-store.ts";
 import { openDatabase } from "../adapters/out/sqlite/db.ts";
 import { SqliteMemoryStore } from "../adapters/out/sqlite/memory-store.ts";
@@ -37,6 +38,7 @@ import { Persona } from "../application/persona.ts";
 import { Recall } from "../application/recall.ts";
 import { ReplyToMessage } from "../application/reply-to-message.ts";
 import { SearchGames } from "../application/search-games.ts";
+import { Swarm } from "../application/swarm.ts";
 import { parseModelRef } from "../domain/model-ref.ts";
 import { TextCommands } from "../application/text-commands.ts";
 import { WebChat } from "../application/web-chat.ts";
@@ -58,6 +60,8 @@ export interface ComposeOptions {
 	env: Env;
 	/** Troca a fabrica de sessoes do pi (teste de montagem, sem modelo real). */
 	sessionFactory?: SessionFactory;
+	/** Troca a fabrica de workers do /swarm (teste de montagem). */
+	workerFactory?: WorkerFactory;
 	/** Troca o fetch de saida (teste de montagem, sem rede). */
 	http?: typeof fetch;
 }
@@ -106,10 +110,12 @@ export function compose(opts: ComposeOptions) {
 	const agentModelText = env("AGENT_MODEL").trim();
 	const agentModel = agentModelText ? parseModelRef(agentModelText) : undefined;
 	if (agentModelText && !agentModel) throw new Error(`AGENT_MODEL inválido: "${agentModelText}" (use provider/id)`);
-	const pool = new SessionPool(
-		opts.sessionFactory ?? piSessionFactory(opts.cwd, (conversationId) => botTools(tools, conversationId), personality, agentModel),
-	);
+	const factories = piSessionFactories(opts.cwd, (conversationId) => botTools(tools, conversationId), personality, agentModel);
+	const pool = new SessionPool(opts.sessionFactory ?? factories.conversations);
 	const agent = new PiChatAgent({ pool, metrics, model: () => agentModelText });
+	const swarm = new Swarm(
+		new PiSubAgents({ factory: opts.workerFactory ?? factories.workers, metrics, model: () => agentModelText }),
+	);
 	const replies = new ReplyToMessage({
 		agent,
 		clock: systemClock,
@@ -125,6 +131,7 @@ export function compose(opts: ComposeOptions) {
 	const webChat = new WebChat({
 		messages,
 		agent,
+		swarm,
 		config,
 		persona,
 		clock: systemClock,

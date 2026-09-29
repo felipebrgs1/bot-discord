@@ -93,12 +93,12 @@ Problema que resolve: com Discord, painel, tools do agente e agendador chamando 
 src/
   domain/          regras puras: settings, roles, trigger, cooldown, reply-split,
                    memory (validacao/prompt/familiaridade), soul, game, media-policy,
-                   html-text, http-url, image, message, turn
+                   html-text, http-url, image, message, turn, swarm
   application/
     ports/         interfaces das portas de saida + suites de contrato
     *.ts           casos de uso: ReplyToMessage, TextCommands, Persona, MessageLog,
                    ConsolidateMemory, Recall, WebResearch, SearchGames, DownloadMedia,
-                   DownloadImages, OutboxDelivery, WebChat, Panel
+                   DownloadImages, OutboxDelivery, WebChat, Swarm, Panel
   adapters/
     in/            discord (gateway, anexos, /lista, ReplyTarget), http-panel,
                    pi-tools (tools do agente), scheduler (consolidacao)
@@ -130,9 +130,9 @@ main -> adapters -> application -> domain
 - **Porta de entrada:** o caso de uso em si (classe em `application/`). Adapters de entrada so traduzem e chamam.
 - **Porta de saida:** interface em `application/ports/`, nomeada pela capacidade, nao pela tecnologia: `MemoryStore`, nao `SqliteMemory`.
 - Uma porta por capacidade, pequena. Leitura do painel e escrita da consolidacao sao portas separadas (`MemoryAdmin`, `MemoryStore`), mesmo com um adapter implementando as duas.
-- O pi e um adapter como outro qualquer: `adapters/out/pi-agent` implementa `ChatAgent` e `ChatSessions`; `adapters/in/pi-tools` expoe casos de uso como tools do agente (`defineTool`).
+- O pi e um adapter como outro qualquer: `adapters/out/pi-agent` implementa `ChatAgent`, `ChatSessions` e `SubAgents` (sessoes efemeras do `/swarm`); `adapters/in/pi-tools` expoe casos de uso como tools do agente (`defineTool`).
 
-Portas de saida: `ChatAgent`, `ChatSessions`, `Clock`, `ConfigStore`, `GameCatalog`, `HistorySearch`, `HostGuard`, `LearningExtractor`, `LogFeed`, `Logger`, `MediaDownloader`, `MemoryAdmin`, `MemoryStore`, `MessageStore`, `MetricsQuery`, `MetricsSink`, `Outbox`, `PageFetcher`, `SoulStore`, `WebSearch`.
+Portas de saida: `ChatAgent`, `ChatSessions`, `Clock`, `ConfigStore`, `GameCatalog`, `HistorySearch`, `HostGuard`, `LearningExtractor`, `LogFeed`, `Logger`, `MediaDownloader`, `MemoryAdmin`, `MemoryStore`, `MessageStore`, `MetricsQuery`, `MetricsSink`, `Outbox`, `PageFetcher`, `SoulStore`, `SubAgents`, `WebSearch`.
 
 ### Nova porta ou adapter (roteiro)
 

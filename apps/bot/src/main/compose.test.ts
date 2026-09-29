@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { WorkerFactory } from "../adapters/out/pi-agent/pi-sub-agents.ts";
 import type { SessionFactory } from "../adapters/out/pi-agent/session-pool.ts";
 import { compose } from "./compose.ts";
 
@@ -14,6 +15,25 @@ const fakeSessions: SessionFactory = {
 			prompt: async () => undefined,
 			waitForIdle: async () => undefined,
 			getLastAssistantText: () => "resposta do agente",
+			getSessionStats: () => ({ tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0 }),
+			dispose: () => undefined,
+		} as unknown as AgentSession;
+	},
+	dispose: () => undefined,
+};
+
+/** Planejador (sem tools) devolve 2 tarefas; workers devolvem um relatorio. */
+const workerCalls: [string, boolean][] = [];
+const fakeWorkers: WorkerFactory = {
+	async create(_conversationId, _instructions, tools) {
+		let asked = "";
+		return {
+			prompt: async (text: string) => {
+				asked = text;
+				workerCalls.push([text, tools]);
+			},
+			waitForIdle: async () => undefined,
+			getLastAssistantText: () => (tools ? `relatorio ${asked}` : '{"tasks": ["A", "B"]}'),
 			getSessionStats: () => ({ tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0 }),
 			dispose: () => undefined,
 		} as unknown as AgentSession;
@@ -33,7 +53,7 @@ function rootWith(personality: string | undefined): string {
 }
 
 function build(env: Record<string, string> = {}, root = rootWith("sou um bot")) {
-	return compose({ dbPath: ":memory:", root, webDir: join(root, "dist"), cwd: "/tmp", env, sessionFactory: fakeSessions, http: noNetwork });
+	return compose({ dbPath: ":memory:", root, webDir: join(root, "dist"), cwd: "/tmp", env, sessionFactory: fakeSessions, workerFactory: fakeWorkers, http: noNetwork });
 }
 
 function call(handler: (req: IncomingMessage, res: ServerResponse) => void, method: string, url: string, body?: unknown): Promise<string> {
@@ -76,6 +96,24 @@ describe("compose", () => {
 		expect(history.messages.map((m) => m.content)).toEqual(["oi", "resposta do agente"]);
 		const metrics = JSON.parse(await call(handler, "GET", "/api/metrics")) as { summary: { requests: number } };
 		expect(metrics.summary.requests).toBe(1);
+		app.db.close();
+	});
+
+	it("/swarm do admin no painel roda planejador e workers e registra metrica swarm", async () => {
+		const app = build();
+		app.config.set("discord.admin_ids", ["dono"]);
+		app.config.set("dashboard.web_user_id", "dono");
+		workerCalls.length = 0;
+		const handler = app.panelHandler();
+		const sse = await call(handler, "POST", "/api/chat/sessions/s1/messages", { content: "/swarm compara A e B" });
+		expect(sse).toContain("event: done");
+		expect(workerCalls).toEqual([
+			["compara A e B", false],
+			["A", true],
+			["B", true],
+		]);
+		const metrics = JSON.parse(await call(handler, "GET", "/api/metrics")) as { models: { operation: string; requests: number }[] };
+		expect(metrics.models.find((m) => m.operation === "swarm")?.requests).toBe(3);
 		app.db.close();
 	});
 

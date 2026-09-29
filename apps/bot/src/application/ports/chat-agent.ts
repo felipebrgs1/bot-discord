@@ -7,6 +7,8 @@ export interface ToolStep {
 	args: string;
 	output: string;
 	durationMs: number;
+	/** Worker do swarm (1..4) que usou a tool; ausente no agente da conversa. */
+	agent?: number;
 }
 
 export interface ChatRequest {

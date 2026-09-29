@@ -5,11 +5,13 @@
 
 import { roleOf } from "../domain/roles.ts";
 import type { StoredMessage } from "../domain/message.ts";
+import { canSwarm, parseSwarmCommand, synthesisText } from "../domain/swarm.ts";
 import type { Persona } from "./persona.ts";
 import type { ChatAgent, ChatSessions, ToolStep } from "./ports/chat-agent.ts";
 import type { Clock } from "./ports/clock.ts";
 import type { ConfigStore } from "./ports/config-store.ts";
 import type { MessageStore } from "./ports/message-store.ts";
+import type { Swarm } from "./swarm.ts";
 
 export interface WebSessionSummary {
 	id: string;
@@ -21,6 +23,7 @@ export interface WebSessionSummary {
 export interface WebChatDeps {
 	messages: MessageStore;
 	agent: ChatAgent & ChatSessions;
+	swarm: Swarm;
 	config: ConfigStore;
 	persona: Persona;
 	clock: Clock;
@@ -70,10 +73,18 @@ export class WebChat {
 		return this.deps.messages.listChannel(WEB_PREFIX + id, MAX_HISTORY);
 	}
 
-	/** Grava a pergunta, avisa, pergunta ao agente e grava a resposta (devolvida). */
+	/**
+	 * Grava a pergunta, avisa, pergunta ao agente e grava a resposta (devolvida).
+	 * `/swarm <pedido>` (so admin): workers rodam antes e o agente junta os resultados.
+	 */
 	async send(id: string, content: string, events: SendEvents): Promise<StoredMessage> {
-		const { messages, agent, config, persona, clock, newId } = this.deps;
+		const { messages, agent, swarm, config, persona, clock, newId } = this.deps;
 		const conversation = WEB_PREFIX + id;
+		const settings = config.all();
+		const webUser = settings.dashboard.web_user_id;
+		const role = roleOf(webUser, settings.discord.admin_ids);
+		const swarmRequest = parseSwarmCommand(content);
+		if (swarmRequest !== undefined && !canSwarm(role)) throw new Error("/swarm é só para admin");
 		const at = new Date(clock.now()).toISOString();
 		const save = (authorId: string, authorName: string, body: string, fromBot: boolean): StoredMessage => {
 			const stored = messages.append({
@@ -90,18 +101,23 @@ export class WebChat {
 		};
 		const question = save("web", "você", content, false);
 		events.accepted(question);
-		const settings = config.all();
-		const webUser = settings.dashboard.web_user_id;
+		const text =
+			swarmRequest === undefined
+				? content
+				: synthesisText(
+						swarmRequest,
+						await swarm.run(conversation, swarmRequest, (n, step) => events.step({ ...step, agent: n })),
+					);
 		const answer = await agent.ask({
 			channelId: conversation,
 			authorId: webUser,
-			role: roleOf(webUser, settings.discord.admin_ids),
+			role,
 			text: persona.turnText({
 				channelId: conversation,
 				authorId: webUser,
 				authorName: WEB_AUTHOR,
 				messageId: question.messageId,
-				text: content,
+				text,
 			}),
 			images: [],
 			source: "web",

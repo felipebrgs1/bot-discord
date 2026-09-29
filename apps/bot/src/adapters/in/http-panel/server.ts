@@ -298,7 +298,8 @@ export function createPanelHandler(deps: PanelServerDeps): (req: IncomingMessage
 			const bot = await chat.send(id, content, {
 				accepted: (message) => sse(res, "accepted", { message: chatMessage(message) }),
 				step: (s) => {
-					const step = { tool: s.tool, args: s.args, output: s.output, duration_ms: s.durationMs };
+					const step: Api.ChatStep = { tool: s.tool, args: s.args, output: s.output, duration_ms: s.durationMs };
+					if (s.agent !== undefined) step.agent = s.agent;
 					steps.push(step);
 					sse(res, "step", step);
 				},

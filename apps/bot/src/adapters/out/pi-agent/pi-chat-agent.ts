@@ -6,7 +6,7 @@ import type { MetricsSink } from "../../../application/ports/metrics.ts";
 import type { TurnReport } from "../../../domain/turn.ts";
 import type { SessionPool } from "./session-pool.ts";
 
-interface StatsTotals {
+export interface StatsTotals {
 	input: number;
 	output: number;
 	cacheRead: number;
@@ -49,8 +49,30 @@ function actualModel(session: AgentSession): { id: string; provider: string } {
 	}
 }
 
+/** Turno para a metrica: delta de tokens/custo da sessao e o modelo real. */
+export function turnReport(
+	session: AgentSession,
+	before: StatsTotals | null,
+	turn: Pick<TurnReport, "operation" | "source" | "status" | "latencyMs">,
+	fallbackModel: string,
+): TurnReport {
+	const after = statsOf(session);
+	const delta = (f: (s: StatsTotals) => number) => (before && after ? Math.max(0, f(after) - f(before)) : null);
+	const model = actualModel(session);
+	return {
+		...turn,
+		model: model.id || fallbackModel,
+		provider: model.provider,
+		inputTokens: delta((s) => s.input),
+		outputTokens: delta((s) => s.output),
+		cachedTokens: delta((s) => s.cacheRead),
+		cacheWriteTokens: delta((s) => s.cacheWrite),
+		cost: delta((s) => s.cost),
+	};
+}
+
 /** Traduz eventos tool_execution_start/end da sessao em ToolStep. */
-function watchTools(session: AgentSession, onStep: (step: ToolStep) => void, now: () => number): () => void {
+export function watchTools(session: AgentSession, onStep: (step: ToolStep) => void, now: () => number): () => void {
 	const subscribe = (session as unknown as { subscribe?: (cb: (e: unknown) => void) => () => void }).subscribe;
 	if (typeof subscribe !== "function") return () => undefined;
 	const started = new Map<string, { tool: string; args: string; at: number }>();
@@ -109,7 +131,15 @@ export class PiChatAgent implements ChatAgent, ChatSessions {
 		const stop = request.onToolStep ? watchTools(session, request.onToolStep, this.now) : () => undefined;
 		const before = statsOf(session);
 		const started = this.now();
-		const report = (status: TurnReport["status"]) => this.opts.metrics.record(this.turn(session, before, started, status, request));
+		const report = (status: TurnReport["status"]) =>
+			this.opts.metrics.record(
+				turnReport(
+					session,
+					before,
+					{ operation: "chat", source: request.source ?? "discord", status, latencyMs: this.now() - started },
+					this.opts.model(),
+				),
+			);
 		try {
 			const images = request.images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType }));
 			const text = await this.opts.pool.ask(session, request.text, images);
@@ -133,30 +163,5 @@ export class PiChatAgent implements ChatAgent, ChatSessions {
 
 	forget(conversationId: string): void {
 		this.opts.pool.forget(conversationId);
-	}
-
-	private turn(
-		session: AgentSession,
-		before: StatsTotals | null,
-		started: number,
-		status: TurnReport["status"],
-		request: ChatRequest,
-	): TurnReport {
-		const after = statsOf(session);
-		const delta = (f: (s: StatsTotals) => number) => (before && after ? Math.max(0, f(after) - f(before)) : null);
-		const model = actualModel(session);
-		return {
-			operation: "chat",
-			model: model.id || this.opts.model(),
-			provider: model.provider,
-			source: request.source ?? "discord",
-			status,
-			latencyMs: this.now() - started,
-			inputTokens: delta((s) => s.input),
-			outputTokens: delta((s) => s.output),
-			cachedTokens: delta((s) => s.cacheRead),
-			cacheWriteTokens: delta((s) => s.cacheWrite),
-			cost: delta((s) => s.cost),
-		};
 	}
 }
