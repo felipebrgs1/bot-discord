@@ -1,5 +1,5 @@
-import { afterAll, describe } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { afterAll, describe, expect, it } from "bun:test";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { outboxContract } from "../../../application/ports/outbox.contract.ts";
@@ -22,5 +22,14 @@ describe("FsOutbox", () => {
 				await writeFile(join(outbox.dirFor(channelId), name), "x");
 			},
 		};
+	});
+});
+
+describe("FsOutbox.save", () => {
+	it("grava os bytes decodificados do base64", async () => {
+		const base = await mkdtemp(join(tmpdir(), "outbox-"));
+		dirs.push(base);
+		const path = await new FsOutbox(base).save("c1", "img.png", Buffer.from("PNG!").toString("base64"));
+		expect(await readFile(path, "utf8")).toBe("PNG!");
 	});
 });

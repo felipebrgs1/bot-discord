@@ -4,6 +4,7 @@ import type { Outbox } from "../../application/ports/outbox.ts";
 export class FakeOutbox implements Outbox {
 	readonly files = new Set<string>();
 	readonly discarded: string[] = [];
+	readonly saved = new Map<string, string>();
 
 	dirFor(channelId: string): string {
 		return `/outbox/${channelId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
@@ -17,6 +18,13 @@ export class FakeOutbox implements Outbox {
 	async discard(path: string): Promise<void> {
 		this.discarded.push(path);
 		this.files.delete(path);
+	}
+
+	async save(channelId: string, name: string, base64: string): Promise<string> {
+		const path = `${this.dirFor(channelId)}/${name}`;
+		this.files.add(path);
+		this.saved.set(path, base64);
+		return path;
 	}
 
 	put(channelId: string, name: string): void {

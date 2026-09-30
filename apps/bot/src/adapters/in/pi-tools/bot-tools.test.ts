@@ -1,13 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { DownloadMedia } from "../../../application/download-media.ts";
+import { GenerateImage } from "../../../application/generate-image.ts";
 import type { MediaResult } from "../../../application/ports/media-downloader.ts";
 import { Recall } from "../../../application/recall.ts";
 import { SearchGames } from "../../../application/search-games.ts";
 import { WebResearch } from "../../../application/web-research.ts";
+import { FakeClock } from "../../../test-support/fakes/clock.ts";
 import { FakeLogger } from "../../../test-support/fakes/logger.ts";
 import { FakeMemoryStore } from "../../../test-support/fakes/memory-store.ts";
 import { FakeMessageStore } from "../../../test-support/fakes/message-store.ts";
+import { FakeOutbox } from "../../../test-support/fakes/outbox.ts";
 import { FakePageFetcher } from "../../../test-support/fakes/page-fetcher.ts";
 import { botTools } from "./bot-tools.ts";
 
@@ -16,6 +19,8 @@ function setup() {
 	const memories = new FakeMemoryStore();
 	const downloads: [string, string][] = [];
 	const searches: string[] = [];
+	const outbox = new FakeOutbox();
+	const prompts: string[] = [];
 	const tools = botTools(
 		{
 			research: new WebResearch(
@@ -33,6 +38,17 @@ function setup() {
 				new FakeLogger(),
 			),
 			recall: new Recall(messages, memories),
+			images: new GenerateImage(
+				{
+					generate: async (prompt) => {
+						prompts.push(prompt);
+						return { data: "aW1n", mimeType: "image/png" };
+					},
+				},
+				outbox,
+				new FakeClock(7),
+				new FakeLogger(),
+			),
 			games: new SearchGames({
 				search: async (name) => {
 					searches.push(name);
@@ -56,15 +72,16 @@ function setup() {
 		const r = await byName(name).execute("t", params as never, undefined as never, undefined as never, {} as never);
 		return r.content[0]?.type === "text" ? r.content[0].text : "";
 	};
-	return { tools, messages, memories, downloads, searches, run };
+	return { tools, messages, memories, downloads, searches, outbox, prompts, run };
 }
 
 describe("botTools", () => {
-	it("as 7 tools do bot, nessa ordem", () => {
+	it("as 8 tools do bot, nessa ordem", () => {
 		expect(setup().tools.map((t) => t.name)).toEqual([
 			"web_search",
 			"web_fetch",
 			"download_media",
+			"generate_image",
 			"search_history",
 			"memory_search",
 			"lista",
@@ -84,6 +101,13 @@ describe("botTools", () => {
 		const { run, downloads } = setup();
 		expect(await run("download_media", { url: "https://x.com/a" })).toStartWith("ok: baixado v.mp4");
 		expect(downloads).toEqual([["https://x.com/a", "c1"]]);
+	});
+
+	it("generate_image gera e larga a imagem no outbox do canal da conversa", async () => {
+		const { run, outbox, prompts } = setup();
+		expect(await run("generate_image", { prompt: "um gato" })).toStartWith("ok:");
+		expect(prompts).toEqual(["um gato"]);
+		expect(await outbox.pending("c1")).toEqual(["/outbox/c1/imagem-7.png"]);
 	});
 
 	it("search_history e memory_search consultam o canal da conversa", async () => {

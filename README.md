@@ -63,6 +63,7 @@ Arquivo `apps/bot/.env`:
 | `DASHBOARD_HOST` | Host do painel (padrao `127.0.0.1`). |
 | `BOT_DB` | Caminho do SQLite (padrao `apps/bot/data/bot.db`). |
 | `YTDLP_BIN` | Caminho do binario do yt-dlp. |
+| `CODEX_IMAGE_MODEL` | Modelo de chat que chama o GPT Image na tool `generate_image` (padrao `gpt-5.5`). Usa a assinatura do ChatGPT: exige `/login` do openai-codex no pi. |
 | `AGENT_ALLOW_PRIVATE` | `1` libera hosts privados nas ferramentas web (so para teste local). |
 
 ## Desenvolvimento

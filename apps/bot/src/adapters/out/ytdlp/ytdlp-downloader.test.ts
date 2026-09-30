@@ -22,6 +22,7 @@ const diskOutbox = (base: string): Outbox => ({
 	dirFor: (channelId) => join(base, channelId),
 	pending: async () => [],
 	discard: async () => undefined,
+	save: async () => "",
 });
 
 async function script(dir: string, name: string, body: string): Promise<string> {

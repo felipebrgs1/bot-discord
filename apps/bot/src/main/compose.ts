@@ -11,6 +11,8 @@ import { createPanelHandler, startPanel } from "../adapters/in/http-panel/server
 import { botTools } from "../adapters/in/pi-tools/bot-tools.ts";
 import { startConsolidationLoop } from "../adapters/in/scheduler/consolidation-loop.ts";
 import { systemClock } from "../adapters/out/clock/system-clock.ts";
+import { CodexImageGenerator } from "../adapters/out/codex/codex-image-generator.ts";
+import { codexToken } from "../adapters/out/codex/codex-token.ts";
 import { FsOutbox } from "../adapters/out/fs/outbox.ts";
 import { ChatJsonExtractor } from "../adapters/out/llm/chat-json-extractor.ts";
 import { LogBuffer } from "../adapters/out/log/log-buffer.ts";
@@ -31,6 +33,7 @@ import { YtDlpDownloader } from "../adapters/out/ytdlp/ytdlp-downloader.ts";
 import { ConsolidateMemory } from "../application/consolidate-memory.ts";
 import { DownloadImages } from "../application/download-images.ts";
 import { DownloadMedia } from "../application/download-media.ts";
+import { GenerateImage } from "../application/generate-image.ts";
 import { MessageLog } from "../application/message-log.ts";
 import { OutboxDelivery } from "../application/outbox-delivery.ts";
 import { Panel } from "../application/panel.ts";
@@ -43,6 +46,9 @@ import { parseModelRef } from "../domain/model-ref.ts";
 import { TextCommands } from "../application/text-commands.ts";
 import { WebChat } from "../application/web-chat.ts";
 import { WebResearch } from "../application/web-research.ts";
+
+/** Modelo de chat que chama a tool de imagem no Codex; CODEX_IMAGE_MODEL tem precedencia. */
+const DEFAULT_CODEX_IMAGE_MODEL = "gpt-5.5";
 
 /** Instalado pelo setup do bot Go; YTDLP_BIN tem precedencia. */
 const DEFAULT_YTDLP = "/home/ubuntu/bot/botdiscord/bin/yt-dlp";
@@ -64,6 +70,8 @@ export interface ComposeOptions {
 	workerFactory?: WorkerFactory;
 	/** Troca o fetch de saida (teste de montagem, sem rede). */
 	http?: typeof fetch;
+	/** Troca o token do Codex (teste de montagem, sem ler o auth.json do pi). */
+	codexToken?: () => Promise<string>;
 }
 
 export function compose(opts: ComposeOptions) {
@@ -104,6 +112,17 @@ export function compose(opts: ComposeOptions) {
 		research: new WebResearch(new NewsWikiSearch(fetcher), fetcher),
 		media: new DownloadMedia(new YtDlpDownloader(env("YTDLP_BIN") || DEFAULT_YTDLP, outbox), guard, log),
 		recall: new Recall(messages, memories),
+		// Imagem pela assinatura do ChatGPT: token do login openai-codex do pi.
+		images: new GenerateImage(
+			new CodexImageGenerator({
+				http: opts.http ?? fetch,
+				token: opts.codexToken ?? codexToken(),
+				model: env("CODEX_IMAGE_MODEL") || DEFAULT_CODEX_IMAGE_MODEL,
+			}),
+			outbox,
+			systemClock,
+			log,
+		),
 		games,
 	};
 	// Modelo da conversa: AGENT_MODEL=provider/id no .env; vazio = padrao do pi.

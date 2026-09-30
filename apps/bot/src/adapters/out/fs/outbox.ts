@@ -1,5 +1,5 @@
-import { readdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import type { Outbox } from "../../../application/ports/outbox.ts";
 
 /** outbox/<canal>/ no disco. */
@@ -22,5 +22,16 @@ export class FsOutbox implements Outbox {
 
 	async discard(path: string): Promise<void> {
 		await rm(path, { force: true });
+	}
+
+	/** Grava como oculto e renomeia: a entrega nunca pega arquivo pela metade. */
+	async save(channelId: string, name: string, base64: string): Promise<string> {
+		const dir = this.dirFor(channelId);
+		await mkdir(dir, { recursive: true });
+		const path = join(dir, basename(name));
+		const partial = join(dir, `.${basename(name)}.part`);
+		await writeFile(partial, Buffer.from(base64, "base64"));
+		await rename(partial, path);
+		return path;
 	}
 }

@@ -5,4 +5,6 @@ export interface Outbox {
 	/** Arquivos pendentes (sem ocultos), caminho completo. */
 	pending(channelId: string): Promise<string[]>;
 	discard(path: string): Promise<void>;
+	/** Grava um arquivo (conteudo em base64) no outbox do canal; devolve o caminho. */
+	save(channelId: string, name: string, base64: string): Promise<string>;
 }

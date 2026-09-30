@@ -26,6 +26,14 @@ export function outboxContract(make: () => Promise<OutboxHarness>): void {
 		expect(await outbox.pending("canal-2")).toHaveLength(1);
 	});
 
+	it("save grava no canal e o arquivo fica pendente", async () => {
+		const { outbox } = await make();
+		const path = await outbox.save("canal-1", "img.png", "aW1n");
+		expect(path.endsWith("img.png")).toBe(true);
+		expect(await outbox.pending("canal-1")).toEqual([path]);
+		expect(await outbox.pending("canal-2")).toEqual([]);
+	});
+
 	it("id de canal nao escapa da pasta", async () => {
 		const { outbox } = await make();
 		expect(outbox.dirFor("../../etc")).not.toContain("..");

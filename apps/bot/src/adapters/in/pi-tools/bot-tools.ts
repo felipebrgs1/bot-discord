@@ -6,6 +6,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { DownloadMedia } from "../../../application/download-media.ts";
+import type { GenerateImage } from "../../../application/generate-image.ts";
 import type { Recall } from "../../../application/recall.ts";
 import type { SearchGames } from "../../../application/search-games.ts";
 import type { WebResearch } from "../../../application/web-research.ts";
@@ -14,6 +15,7 @@ export interface ToolServices {
 	research: WebResearch;
 	media: DownloadMedia;
 	recall: Recall;
+	images: GenerateImage;
 	games: SearchGames;
 }
 
@@ -25,7 +27,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 
 /** Tools de toda conversa (user e admin); admin ganha as nativas do pi por fora. */
 export function botTools(services: ToolServices, channelId: string): ToolDefinition[] {
-	const { research, media, recall, games } = services;
+	const { research, media, recall, images, games } = services;
 	return [
 		defineTool({
 			name: "web_search",
@@ -55,6 +57,14 @@ export function botTools(services: ToolServices, channelId: string): ToolDefinit
 				"Baixa vídeo de X/Twitter, TikTok, Instagram, Twitch ou Kick por URL e ENVIA como anexo ao canal automaticamente. OUTRAS PLATAFORMAS (YouTube, Facebook, Vimeo...) não têm suporte — avise antes de tentar.",
 			parameters: Type.Object({ url: Type.String({ description: "URL do vídeo" }) }),
 			execute: async (_id, p) => textResult(await media.run(p.url ?? "", channelId)),
+		}),
+		defineTool({
+			name: "generate_image",
+			label: "Gerar imagem",
+			description:
+				"Gera uma imagem a partir de uma descrição (GPT Image) e ENVIA como anexo ao canal automaticamente. Descreva com detalhe: assunto, estilo, cores, enquadramento e qualquer texto que deva aparecer. Demora até um minuto.",
+			parameters: Type.Object({ prompt: Type.String({ description: "Descrição detalhada da imagem" }) }),
+			execute: async (_id, p) => textResult(await images.run(p.prompt ?? "", channelId)),
 		}),
 		defineTool({
 			name: "search_history",
