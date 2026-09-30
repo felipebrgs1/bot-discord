@@ -93,14 +93,14 @@ Problema que resolve: com Discord, painel, tools do agente e agendador chamando 
 src/
   domain/          regras puras: settings, roles, trigger, cooldown, reply-split,
                    memory (validacao/prompt/familiaridade), soul, game, media-policy,
-                   html-text, http-url, image, message, turn, swarm
+                   html-text, http-url, image, media-quality, message, turn, swarm
   application/
     ports/         interfaces das portas de saida + suites de contrato
     *.ts           casos de uso: ReplyToMessage, TextCommands, Persona, MessageLog,
                    ConsolidateMemory, Recall, WebResearch, SearchGames, DownloadMedia,
                    DownloadImages, OutboxDelivery, WebChat, Swarm, Panel
   adapters/
-    in/            discord (gateway, anexos, /lista, ReplyTarget), http-panel,
+    in/            discord (gateway, anexos, /lista, /baixar, ReplyTarget), http-panel,
                    pi-tools (tools do agente), scheduler (consolidacao)
     out/           sqlite, pi-agent, web (fetcher, guarda SSRF, busca, Skidrow),
                    llm (extrator), ytdlp, fs (outbox), log, clock

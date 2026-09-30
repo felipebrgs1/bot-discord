@@ -7,11 +7,13 @@ import {
 	Client,
 	Events,
 	GatewayIntentBits,
+	type ChatInputCommandInteraction,
 	type Interaction,
 	type Message,
 	type OmitPartialGroupDMChannel,
 } from "discord.js";
 import type { DownloadImages } from "../../../application/download-images.ts";
+import type { DownloadMedia } from "../../../application/download-media.ts";
 import type { MessageLog } from "../../../application/message-log.ts";
 import type { OutboxDelivery } from "../../../application/outbox-delivery.ts";
 import type { Clock } from "../../../application/ports/clock.ts";
@@ -24,6 +26,7 @@ import type { GameHit } from "../../../domain/game.ts";
 import type { ImageData } from "../../../domain/image.ts";
 import type { BotSettings } from "../../../domain/settings.ts";
 import { type ChannelAccess, isAllowedChannel, shouldReply } from "../../../domain/trigger.ts";
+import { BAIXAR_COMMAND_JSON } from "./baixar.ts";
 import { collectImageUrls, type ImageCarrier, imagesOf, mergeUrls, valuesOf } from "./attachments.ts";
 import { LISTA_COMMAND_JSON, listaEmbed, MAGNET_BUTTON_PREFIX, magnetRow } from "./lista.ts";
 import { discordReplyTarget } from "./reply-target.ts";
@@ -91,6 +94,7 @@ export interface GatewayDeps {
 	commands: TextCommands;
 	games: SearchGames;
 	images: DownloadImages;
+	media: DownloadMedia;
 	outbox: OutboxDelivery;
 	history: MessageLog;
 	logger: Logger;
@@ -134,30 +138,71 @@ export class DiscordGateway {
 		this.client.destroy();
 	}
 
-	/** /lista na guild (instantaneo; global demoraria ate 1h). */
+	/** Slash commands na guild (instantaneo; global demoraria ate 1h). */
 	private async registerCommands(): Promise<void> {
+		const commands = [LISTA_COMMAND_JSON, BAIXAR_COMMAND_JSON];
 		try {
 			const guildId = this.deps.config.all().discord.guild_id;
-			if (guildId) await (await this.client.guilds.fetch(guildId)).commands.set([LISTA_COMMAND_JSON]);
-			else await this.client.application?.commands.set([LISTA_COMMAND_JSON]);
-			this.deps.logger.info("slash commands registrados: /lista");
+			if (guildId) await (await this.client.guilds.fetch(guildId)).commands.set(commands);
+			else await this.client.application?.commands.set(commands);
+			this.deps.logger.info("slash commands registrados: /lista, /baixar");
 		} catch (err) {
 			this.deps.logger.error(`slash commands ERRO: ${errorText(err)}`);
 		}
 	}
 
-	/** /lista sem LLM (nunca cai em recusa do modelo) + botoes 1/2/3 com o magnet. */
+	/** Slash commands sem LLM (nunca caem em recusa do modelo) + botoes do /lista. */
 	async onInteraction(interaction: Interaction): Promise<void> {
 		if (interaction.isButton()) {
 			await this.onMagnetButton(interaction);
 			return;
 		}
-		if (!interaction.isChatInputCommand() || interaction.commandName !== "lista") return;
+		if (!interaction.isChatInputCommand()) return;
+		const handler = { lista: this.onLista, baixar: this.onBaixar }[interaction.commandName];
+		if (!handler) return;
 		const place = { guildId: interaction.guildId, channelId: interaction.channelId };
 		if (!isAllowedChannel(place, channelAccess(this.deps.config.all()))) {
 			await interaction.reply({ content: "comando indisponível neste canal.", ephemeral: true }).catch(() => undefined);
 			return;
 		}
+		await handler.call(this, interaction);
+	}
+
+	/** /baixar: video como anexo da resposta (1o arquivo) e follow-ups (resto). */
+	private async onBaixar(interaction: ChatInputCommandInteraction): Promise<void> {
+		const url = interaction.options.getString("url", true).trim();
+		try {
+			// yt-dlp + recompressao levam bem mais que 3s.
+			await interaction.deferReply();
+			this.deps.history.record({
+				channelId: interaction.channelId,
+				authorId: interaction.user.id,
+				authorName: interaction.user.username,
+				messageId: interaction.id,
+				body: `/baixar ${url}`,
+			});
+			const outcome = await this.deps.media.fetch(url, interaction.channelId);
+			if (!outcome.ok) {
+				await interaction.editReply(outcome.text);
+				return;
+			}
+			let sent = 0;
+			await this.deps.outbox.deliver(interaction.channelId, async (path) => {
+				const payload = { files: [{ attachment: path }] };
+				if (sent === 0) await interaction.editReply(payload);
+				else await interaction.followUp(payload);
+				sent++;
+			});
+			if (sent === 0) await interaction.editReply("não rolou: o Discord recusou o anexo");
+		} catch (err) {
+			const msg = `não rolou: ${errorText(err)}`;
+			if (interaction.deferred) await interaction.editReply(msg).catch(() => undefined);
+			else await interaction.reply({ content: msg, ephemeral: true }).catch(() => undefined);
+		}
+	}
+
+	/** /lista: embed com o top 3 e botoes 1/2/3 com o magnet. */
+	private async onLista(interaction: ChatInputCommandInteraction): Promise<void> {
 		const jogo = interaction.options.getString("jogo", true).trim();
 		try {
 			// A busca leva segundos: defer primeiro (limite de 3s do Discord).

@@ -145,6 +145,7 @@ export function compose(opts: ComposeOptions) {
 		commands: new TextCommands({ games, souls, sessions: agent, adminIds: () => config.all().discord.admin_ids }),
 		games,
 		images: new DownloadImages(fetcher),
+		media: tools.media,
 		outbox: new OutboxDelivery(outbox, log),
 		history: new MessageLog(messages, log),
 		logger: log,

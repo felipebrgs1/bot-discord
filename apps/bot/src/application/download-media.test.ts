@@ -56,6 +56,18 @@ describe("DownloadMedia", () => {
 		expect(logger.lines[0]).toStartWith("error media_download_failed");
 	});
 
+	it("fetch diz se ha arquivo para enviar alem do texto", async () => {
+		const fetch = (r: MediaResult, url = "https://x.com/a") =>
+			new DownloadMedia(downloader(r).fake, openGuard, new FakeLogger()).fetch(url, "c1");
+		expect(await fetch(done(["1.mp4 (10 bytes)"]))).toEqual({
+			ok: true,
+			text: "ok: baixado 1.mp4 (10 bytes). O arquivo será enviado ao canal como anexo.",
+		});
+		expect(await fetch(done([], ["v.mp4 (grande)"]))).toMatchObject({ ok: false });
+		expect(await fetch({ kind: "failed", output: "x" })).toMatchObject({ ok: false });
+		expect(await fetch(done([]), "não-url")).toEqual({ ok: false, text: "erro: só aceito URL http/https" });
+	});
+
 	it("so grande demais, nada novo, e parcial", async () => {
 		const run = (r: MediaResult) => new DownloadMedia(downloader(r).fake, openGuard, new FakeLogger()).run("https://x.com/a", "c1");
 		expect(await run(done([], ["v.mp4 (30.0 MB, não coube: x)"]))).toBe(

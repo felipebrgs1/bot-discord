@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "bun:test";
 import { DownloadImages } from "../../../application/download-images.ts";
+import { DownloadMedia } from "../../../application/download-media.ts";
 import { MessageLog } from "../../../application/message-log.ts";
 import { OutboxDelivery } from "../../../application/outbox-delivery.ts";
 import type { Turn } from "../../../application/persona.ts";
 import type { ChatRequest } from "../../../application/ports/chat-agent.ts";
 import type { GameCatalog } from "../../../application/ports/game-catalog.ts";
+import type { MediaResult } from "../../../application/ports/media-downloader.ts";
 import { ReplyToMessage } from "../../../application/reply-to-message.ts";
 import { SearchGames } from "../../../application/search-games.ts";
 import { TextCommands } from "../../../application/text-commands.ts";
@@ -35,7 +37,7 @@ const catalog: GameCatalog = {
 	magnet: async () => "magnet:?xt=urn:btih:HASH123",
 };
 
-function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string } = {}) {
+function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: MediaResult } = {}) {
 	const clock = new FakeClock(0);
 	const logger = new FakeLogger();
 	const config = new FakeConfigStore({ discord: { guild_id: opts.guild ?? "g1", channel_ids: ["c1"], admin_ids: ["dono"] } });
@@ -60,6 +62,19 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string } = {}) {
 	const messages = new FakeMessageStore();
 	const outbox = new FakeOutbox();
 	const games = new SearchGames(catalog);
+	const downloads: [string, string][] = [];
+	const media = new DownloadMedia(
+		{
+			download: async (url, channelId) => {
+				downloads.push([url, channelId]);
+				const result = opts.media ?? { kind: "done", files: ["v.mp4 (5 bytes)"], dropped: [] };
+				if (result.kind === "done") for (const f of result.files) outbox.put(channelId, f.split(" ")[0] ?? f);
+				return result;
+			},
+		},
+		{ assertPublic: async () => undefined },
+		logger,
+	);
 	const souls = new FakeSoulStore();
 	souls.ensureSeed("padrão");
 	const handlers: Record<string, (m: unknown) => void> = {};
@@ -75,6 +90,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string } = {}) {
 		commands: new TextCommands({ games, souls, sessions: { conversations: () => [], forget: () => undefined }, adminIds: () => ["dono"] }),
 		games,
 		images: new DownloadImages(new FakePageFetcher(opts.routes ?? [PNG])),
+		media,
 		outbox: new OutboxDelivery(outbox, logger),
 		history: new MessageLog(messages, logger),
 		logger,
@@ -89,7 +105,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string } = {}) {
 		await new Promise((r) => setTimeout(r, 10));
 		await replies.idle();
 	};
-	return { gw, clock, asked, turns, messages, outbox, receive };
+	return { gw, clock, asked, turns, messages, outbox, downloads, receive };
 }
 
 function message(over: Record<string, unknown> = {}) {
@@ -276,6 +292,7 @@ function interaction(over: Record<string, unknown> = {}) {
 			ix.deferred = true;
 		}),
 		editReply: vi.fn(async (_payload: unknown) => undefined),
+		followUp: vi.fn(async (_payload: unknown) => undefined),
 		...over,
 	};
 	return ix;
@@ -341,5 +358,60 @@ describe("/lista", () => {
 		await gw.onInteraction(ix as never);
 		expect(ix.reply).not.toHaveBeenCalled();
 		expect(ix.deferReply).not.toHaveBeenCalled();
+	});
+});
+
+const baixar = (url: string, over: Record<string, unknown> = {}) =>
+	interaction({ commandName: "baixar", options: { getString: () => url }, ...over });
+
+describe("/baixar", () => {
+	it("baixa e responde com o video anexado, sem agente, e registra no historico", async () => {
+		const { gw, asked, messages, outbox, downloads } = setup();
+		const ix = baixar(" https://x.com/u/status/1 ");
+		await gw.onInteraction(ix as never);
+		expect(ix.deferReply).toHaveBeenCalledTimes(1);
+		expect(downloads).toEqual([["https://x.com/u/status/1", "c1"]]);
+		expect(ix.editReply.mock.calls[0]?.[0]).toEqual({ files: [{ attachment: "/outbox/c1/v.mp4" }] });
+		expect(outbox.discarded).toEqual(["/outbox/c1/v.mp4"]);
+		expect(asked).toEqual([]);
+		expect(messages.messages.map((m) => m.body)).toEqual(["/baixar https://x.com/u/status/1"]);
+	});
+
+	it("mais de um arquivo: o primeiro na resposta, o resto em follow-up", async () => {
+		const { gw } = setup({ media: { kind: "done", files: ["a.mp4 (1 bytes)", "b.mp4 (1 bytes)"], dropped: [] } });
+		const ix = baixar("https://x.com/a");
+		await gw.onInteraction(ix as never);
+		expect(ix.editReply.mock.calls[0]?.[0]).toEqual({ files: [{ attachment: "/outbox/c1/a.mp4" }] });
+		expect(ix.followUp.mock.calls[0]?.[0]).toEqual({ files: [{ attachment: "/outbox/c1/b.mp4" }] });
+	});
+
+	it("falha do download edita com o motivo", async () => {
+		const { gw } = setup({ media: { kind: "done", files: [], dropped: ["v.mp4 (30.0 MB, não coube: x)"] } });
+		const ix = baixar("https://x.com/a");
+		await gw.onInteraction(ix as never);
+		expect(String(ix.editReply.mock.calls[0]?.[0])).toBe(
+			"erro: vídeo grande demais — v.mp4 (30.0 MB, não coube: x); o teto de anexo aqui é 20 MB",
+		);
+	});
+
+	it("anexo recusado pelo Discord vira erro em vez de ficar pensando", async () => {
+		const { gw, outbox } = setup();
+		const ix = baixar("https://x.com/a", {
+			editReply: vi.fn(async (payload: unknown) => {
+				if (typeof payload === "object") throw new Error("Request entity too large");
+			}),
+		});
+		await gw.onInteraction(ix as never);
+		expect(ix.editReply.mock.calls[1]?.[0]).toBe("não rolou: o Discord recusou o anexo");
+		expect(outbox.discarded).toEqual(["/outbox/c1/v.mp4"]);
+	});
+
+	it("canal fora da allowlist recebe efemero sem baixar", async () => {
+		const { gw, downloads } = setup();
+		const ix = baixar("https://x.com/a", { channelId: "c9" });
+		await gw.onInteraction(ix as never);
+		expect(ix.deferReply).not.toHaveBeenCalled();
+		expect(ix.reply.mock.calls[0]?.[0]).toMatchObject({ ephemeral: true });
+		expect(downloads).toEqual([]);
 	});
 });
