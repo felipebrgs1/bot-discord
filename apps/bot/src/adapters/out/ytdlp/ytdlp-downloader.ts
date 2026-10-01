@@ -45,7 +45,8 @@ const numberOr = (v: unknown): number | null => (typeof v === "number" && Number
 function parseProbe(json: string): { durationSec: number; formats: MediaFormat[] } {
 	const info = JSON.parse(json) as { duration?: unknown; formats?: unknown };
 	const raw = Array.isArray(info.formats) ? (info.formats as Record<string, unknown>[]) : [];
-	const has = (codec: unknown) => typeof codec === "string" && codec !== "none";
+	// Como no yt-dlp: so "none" e ausente; codec desconhecido conta como presente.
+	const has = (codec: unknown) => codec !== "none";
 	return {
 		durationSec: numberOr(info.duration) ?? 0,
 		formats: raw.map((f) => ({

@@ -89,6 +89,17 @@ describe("YtDlpDownloader", () => {
 		expect(download).toContain("-f 720+a ");
 	});
 
+	it("codec desconhecido conta como presente, como no audio HLS do X", async () => {
+		const dir = await tempDir();
+		const probe = probeJson([
+			{ format_id: "hls-audio-128000-Audio", vcodec: "none", tbr: 128 },
+			{ format_id: "hls-2176", height: 720, vcodec: "avc1.640020", acodec: "none", tbr: 2176 },
+		]);
+		await new YtDlpDownloader(await fakeYtDlp(dir, probe), diskOutbox(dir)).download("https://x.com/a", "c1");
+		const [, download] = await lines(join(dir, "args"));
+		expect(download).toContain("-f hls-2176+hls-audio-128000-Audio ");
+	});
+
 	it("sem formato de tamanho conhecido que caiba, baixa ate 720p para recomprimir", async () => {
 		const dir = await tempDir();
 		const probe = probeJson([{ format_id: "hls", height: 1080, vcodec: "avc1", acodec: "mp4a" }], 0);
