@@ -33,7 +33,7 @@ export function botTools(services: ToolServices, channelId: string): ToolDefinit
 			name: "web_search",
 			label: "Pesquisa web",
 			description:
-				"Pesquisa notícias recentes e conhecimento geral na web, sem chave. Use para fatos atuais (jogos, placares, notícias). Retorna títulos, fontes, datas e links.",
+				"Pesquisa na web (notícias recentes e conhecimento geral). Use para fatos atuais (jogos, placares, notícias). Retorna resposta direta quando houver, títulos, links, datas e trechos.",
 			parameters: Type.Object({
 				query: Type.String({ description: "O que pesquisar" }),
 				max_results: Type.Optional(Type.Number({ description: "Máximo de resultados (1-10, padrão 5)" })),

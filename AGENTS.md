@@ -72,7 +72,7 @@ Onde testar cada camada:
 
 **Teste de contrato:** porta de saida com estado (stores, outbox, fetcher) tem uma suite em `src/application/ports/<porta>.contract.ts` que recebe uma fabrica. A mesma suite roda contra o fake e contra o adapter real. Assim o fake nao mente.
 
-**Adapter de rede:** nunca rede real. O adapter recebe `fetch` injetado (`HttpPageFetcher`, `ChatJsonExtractor`) ou a porta `PageFetcher` (`NewsWikiSearch`, `SkidrowCatalog`), e o teste usa `FakePageFetcher` com rotas por regex. Processo externo (yt-dlp) e testado com binario falso em pasta temporaria.
+**Adapter de rede:** nunca rede real. O adapter recebe `fetch` injetado (`HttpPageFetcher`, `ChatJsonExtractor`, `TavilySearch`, `FirecrawlSearch`) ou a porta `PageFetcher` (`SkidrowCatalog`), e o teste usa `FakePageFetcher` com rotas por regex. Processo externo (yt-dlp) e testado com binario falso em pasta temporaria.
 
 ```ts
 // src/application/ports/memory-store.contract.ts
@@ -102,7 +102,7 @@ src/
   adapters/
     in/            discord (gateway, anexos, /lista, /baixar, ReplyTarget), http-panel,
                    pi-tools (tools do agente), scheduler (consolidacao)
-    out/           sqlite, pi-agent, web (fetcher, guarda SSRF, busca, Skidrow),
+    out/           sqlite, pi-agent, web (fetcher, guarda SSRF, busca Tavily/Firecrawl, Skidrow),
                    llm (extrator), codex (GPT Image pela assinatura), ytdlp,
                    fs (outbox), log, clock
   main/            compose.ts (composition root) e run.ts (le .env e sobe)

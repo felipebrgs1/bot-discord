@@ -168,6 +168,43 @@ describe("compose", () => {
 		app.db.close();
 	});
 
+	it("web_search usa o Tavily e cai para o Firecrawl quando o Tavily falha", async () => {
+		const root = rootWith("sou um bot");
+		const auth: string[] = [];
+		const http = (async (url: string | URL | Request, init?: RequestInit) => {
+			auth.push(`${String(url)} ${(init?.headers as Record<string, string>)["Authorization"]}`);
+			if (String(url).includes("tavily")) return new Response("{}", { status: 432 });
+			return new Response(JSON.stringify({ success: true, data: { web: [{ title: "Vasco", url: "https://v" }] } }));
+		}) as typeof fetch;
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { TAVILY_API_KEY: "tvly-k", FIRECRAWL_API_KEY: "fc-k" },
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http,
+		});
+		const tool = app.tools("c1").find((t) => t.name === "web_search");
+		const result = await tool?.execute("t", { query: "vasco" } as never, undefined as never, undefined as never, {} as never);
+		const first = result?.content[0];
+		expect(first?.type === "text" ? first.text : "").toContain("1. Vasco");
+		expect(auth).toEqual(["https://api.tavily.com/search Bearer tvly-k", "https://api.firecrawl.dev/v2/search Bearer fc-k"]);
+		app.db.close();
+	});
+
+	it("web_search sem chave configurada avisa qual variavel falta", async () => {
+		const app = build();
+		const tool = app.tools("c1").find((t) => t.name === "web_search");
+		const result = await tool?.execute("t", { query: "vasco" } as never, undefined as never, undefined as never, {} as never);
+		const first = result?.content[0];
+		expect(first?.type === "text" ? first.text : "").toBe(
+			"erro na pesquisa: nenhum buscador configurado (TAVILY_API_KEY ou FIRECRAWL_API_KEY)",
+		);
+		app.db.close();
+	});
+
 	it("personalidade vem do personality.md da raiz e e relida a cada chamada", () => {
 		const root = rootWith("sou o elmatadore\n");
 		const app = build({}, root);

@@ -25,10 +25,11 @@ import { SqliteMemoryStore } from "../adapters/out/sqlite/memory-store.ts";
 import { SqliteMessageStore } from "../adapters/out/sqlite/message-store.ts";
 import { SqliteMetrics } from "../adapters/out/sqlite/metrics.ts";
 import { SqliteSoulStore } from "../adapters/out/sqlite/soul-store.ts";
+import { FirecrawlSearch } from "../adapters/out/web/firecrawl-search.ts";
 import { DnsHostGuard } from "../adapters/out/web/host-guard.ts";
 import { HttpPageFetcher } from "../adapters/out/web/http-fetcher.ts";
-import { NewsWikiSearch } from "../adapters/out/web/news-wiki-search.ts";
 import { SkidrowCatalog } from "../adapters/out/web/skidrow-catalog.ts";
+import { TavilySearch } from "../adapters/out/web/tavily-search.ts";
 import { YtDlpDownloader } from "../adapters/out/ytdlp/ytdlp-downloader.ts";
 import { ConsolidateMemory } from "../application/consolidate-memory.ts";
 import { DownloadImages } from "../application/download-images.ts";
@@ -38,6 +39,7 @@ import { MessageLog } from "../application/message-log.ts";
 import { OutboxDelivery } from "../application/outbox-delivery.ts";
 import { Panel } from "../application/panel.ts";
 import { Persona } from "../application/persona.ts";
+import type { WebSearch } from "../application/ports/web-search.ts";
 import { Recall } from "../application/recall.ts";
 import { ReplyToMessage } from "../application/reply-to-message.ts";
 import { SearchGames } from "../application/search-games.ts";
@@ -46,6 +48,7 @@ import { parseModelRef } from "../domain/model-ref.ts";
 import { TextCommands } from "../application/text-commands.ts";
 import { WebChat } from "../application/web-chat.ts";
 import { WebResearch } from "../application/web-research.ts";
+import { WebSearchChain } from "../application/web-search-chain.ts";
 
 /** Modelo de chat que chama a tool de imagem no Codex; CODEX_IMAGE_MODEL tem precedencia. */
 const DEFAULT_CODEX_IMAGE_MODEL = "gpt-5.5";
@@ -104,18 +107,23 @@ export function compose(opts: ComposeOptions) {
 	const guard = new DnsHostGuard({ allowPrivate: env("AGENT_ALLOW_PRIVATE") === "1" });
 	const fetcher = new HttpPageFetcher(opts.http ? { guard, http: opts.http } : { guard });
 	const outbox = new FsOutbox(join(opts.root, "outbox"));
+	// Pesquisa: Tavily primeiro, Firecrawl de reserva; so entra quem tem chave no .env.
+	const http = opts.http ?? fetch;
+	const searchers: WebSearch[] = [];
+	if (env("TAVILY_API_KEY")) searchers.push(new TavilySearch({ apiKey: env("TAVILY_API_KEY"), http }));
+	if (env("FIRECRAWL_API_KEY")) searchers.push(new FirecrawlSearch({ apiKey: env("FIRECRAWL_API_KEY"), http }));
 
 	// Casos de uso
 	const persona = new Persona(souls, memories, messages);
 	const games = new SearchGames(new SkidrowCatalog(fetcher));
 	const tools = {
-		research: new WebResearch(new NewsWikiSearch(fetcher), fetcher),
+		research: new WebResearch(new WebSearchChain(searchers), fetcher),
 		media: new DownloadMedia(new YtDlpDownloader(env("YTDLP_BIN") || DEFAULT_YTDLP, outbox), guard, log),
 		recall: new Recall(messages, memories),
 		// Imagem pela assinatura do ChatGPT: token do login openai-codex do pi.
 		images: new GenerateImage(
 			new CodexImageGenerator({
-				http: opts.http ?? fetch,
+				http,
 				token: opts.codexToken ?? codexToken(),
 				model: env("CODEX_IMAGE_MODEL") || DEFAULT_CODEX_IMAGE_MODEL,
 			}),
