@@ -1,12 +1,12 @@
 /**
- * ImageGenerator pelo OpenRouter: chat completions com modalities ["image"]
- * (modelos so de imagem). A imagem volta como data URL em message.images.
+ * ImageGenerator pelo endpoint images do OpenRouter.
+ * A imagem volta em data[].b64_json, com media_type opcional.
  */
 
 import type { ImageGenerator } from "../../../application/ports/image-generator.ts";
 import type { ImageData } from "../../../domain/image.ts";
 
-const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+const ENDPOINT = "https://openrouter.ai/api/v1/images";
 const TIMEOUT_MS = 180_000;
 
 export interface OpenRouterImageOptions {
@@ -18,7 +18,7 @@ export interface OpenRouterImageOptions {
 
 interface Completion {
 	error?: { message?: unknown };
-	choices?: { message?: { content?: unknown; images?: { image_url?: { url?: unknown } }[] } }[];
+	data?: { b64_json?: unknown; media_type?: unknown }[];
 }
 
 function parse(body: string): Completion | undefined {
@@ -41,7 +41,7 @@ export class OpenRouterImageGenerator implements ImageGenerator {
 		const res = await this.opts.http(ENDPOINT, {
 			method: "POST",
 			headers: { Authorization: `Bearer ${this.opts.apiKey}`, "content-type": "application/json" },
-			body: JSON.stringify({ model: this.opts.model, modalities: ["image"], messages: [{ role: "user", content: prompt }] }),
+			body: JSON.stringify({ model: this.opts.model, prompt, output_format: "png" }),
 			signal: AbortSignal.timeout(TIMEOUT_MS),
 		});
 		const body = await res.text();
@@ -50,11 +50,13 @@ export class OpenRouterImageGenerator implements ImageGenerator {
 		if (!res.ok) throw new Error(`openrouter ${res.status}: ${detail ?? body.slice(0, 300)}`);
 		if (detail) throw new Error(`openrouter: ${detail}`);
 
-		const message = json?.choices?.[0]?.message;
-		const url = message?.images?.[0]?.image_url?.url;
-		const match = typeof url === "string" ? /^data:([^;,]+);base64,(.+)$/s.exec(url) : null;
-		if (match?.[1] && match[2]) return { data: match[2], mimeType: match[1] };
-		const text = typeof message?.content === "string" ? message.content.trim() : "";
-		throw new Error(`sem imagem na resposta: ${text || "o modelo não gerou nada"}`);
+		const image = json?.data?.[0];
+		if (typeof image?.b64_json === "string" && image.b64_json) {
+			return {
+				data: image.b64_json,
+				mimeType: typeof image.media_type === "string" && image.media_type ? image.media_type : "image/png",
+			};
+		}
+		throw new Error("sem imagem na resposta: o modelo não gerou nada");
 	}
 }

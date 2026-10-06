@@ -174,8 +174,7 @@ describe("compose", () => {
 		const http = (async (url: string | URL | Request, init?: RequestInit) => {
 			const model = String((JSON.parse(String(init?.body)) as { model: unknown }).model);
 			calls.push(`${String(url)} ${(init?.headers as Record<string, string>)["Authorization"]} ${model}`);
-			const images = [{ type: "image_url", image_url: { url: "data:image/png;base64,aW1n" } }];
-			return new Response(JSON.stringify({ choices: [{ message: { content: "", images } }] }));
+			return new Response(JSON.stringify({ data: [{ b64_json: "aW1n", media_type: "image/png" }] }));
 		}) as typeof fetch;
 		const app = compose({
 			dbPath: ":memory:",
@@ -188,7 +187,7 @@ describe("compose", () => {
 			http,
 		});
 		expect((await app.drawing.create("gato", "c1")).ok).toBe(true);
-		expect(calls).toEqual(["https://openrouter.ai/api/v1/chat/completions Bearer or-k inclusionai/ming-image-0.1-design"]);
+		expect(calls).toEqual(["https://openrouter.ai/api/v1/images Bearer or-k inclusionai/ming-image-0.1-design"]);
 		expect(readdirSync(join(root, "outbox", "c1"))).toHaveLength(1);
 		app.db.close();
 	});
