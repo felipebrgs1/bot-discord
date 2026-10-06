@@ -36,6 +36,7 @@ import { ConsolidateMemory } from "../application/consolidate-memory.ts";
 import { DownloadImages } from "../application/download-images.ts";
 import { DownloadMedia } from "../application/download-media.ts";
 import { GenerateImage } from "../application/generate-image.ts";
+import { ImagePromptWriter } from "../application/image-prompt.ts";
 import { MessageLog } from "../application/message-log.ts";
 import { OutboxDelivery } from "../application/outbox-delivery.ts";
 import { Panel } from "../application/panel.ts";
@@ -155,9 +156,15 @@ export function compose(opts: ComposeOptions) {
 	const factories = piSessionFactories(opts.cwd, (conversationId) => botTools(tools, conversationId), personality, agentModel);
 	const pool = new SessionPool(opts.sessionFactory ?? factories.conversations);
 	const agent = new PiChatAgent({ pool, metrics, model: () => agentModelText });
-	const swarm = new Swarm(
-		new PiSubAgents({ factory: opts.workerFactory ?? factories.workers, metrics, model: () => agentModelText }),
-	);
+	const subAgents = new PiSubAgents({ factory: opts.workerFactory ?? factories.workers, metrics, model: () => agentModelText });
+	const swarm = new Swarm(subAgents);
+	// /gerar: worker sem tools (nada de chamar o generate_image do Codex) com o contexto da Persona.
+	const prompting = new ImagePromptWriter({
+		agents: subAgents,
+		logger: log,
+		systemPromptFor: (channelId) => persona.systemPromptFor(channelId),
+		turnText: (turn) => persona.turnText(turn),
+	});
 	const replies = new ReplyToMessage({
 		agent,
 		clock: systemClock,
@@ -189,6 +196,7 @@ export function compose(opts: ComposeOptions) {
 		images: new DownloadImages(fetcher),
 		media: tools.media,
 		drawing,
+		prompting,
 		outbox: new OutboxDelivery(outbox, log),
 		history: new MessageLog(messages, log),
 		logger: log,
@@ -224,6 +232,7 @@ export function compose(opts: ComposeOptions) {
 		agent,
 		tools: (conversationId: string) => botTools(tools, conversationId),
 		drawing,
+		prompting,
 		personality,
 		panelHandler: () => createPanelHandler(panelDeps),
 

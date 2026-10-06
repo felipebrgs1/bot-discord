@@ -192,6 +192,15 @@ describe("compose", () => {
 		app.db.close();
 	});
 
+	it("/gerar prepara o prompt num worker sem tools, com o contexto do canal", async () => {
+		const app = build();
+		workerCalls.length = 0;
+		const prompt = await app.prompting.write({ channelId: "c1", authorId: "u1", authorName: "ana", messageId: "m1", text: "imagem do grupo" });
+		expect(prompt).toBe('{"tasks": ["A", "B"]}');
+		expect(workerCalls).toEqual([[expect.stringContaining("imagem do grupo"), false]]);
+		app.db.close();
+	});
+
 	it("OPENROUTER_IMAGE_MODEL troca o modelo do /gerar", async () => {
 		const models: string[] = [];
 		const http = (async (_url: string | URL | Request, init?: RequestInit) => {

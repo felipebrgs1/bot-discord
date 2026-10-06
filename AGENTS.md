@@ -98,7 +98,7 @@ src/
     ports/         interfaces das portas de saida + suites de contrato
     *.ts           casos de uso: ReplyToMessage, TextCommands, Persona, MessageLog,
                    ConsolidateMemory, Recall, WebResearch, SearchGames, DownloadMedia,
-                   DownloadImages, GenerateImage, OutboxDelivery, WebChat, Swarm, Panel
+                   DownloadImages, GenerateImage, ImagePromptWriter, OutboxDelivery, WebChat, Swarm, Panel
   adapters/
     in/            discord (gateway, anexos, /lista, /baixar, /gerar, ReplyTarget), http-panel,
                    pi-tools (tools do agente), scheduler (consolidacao)

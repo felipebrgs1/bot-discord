@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "bun:test";
 import { DownloadImages } from "../../../application/download-images.ts";
 import { DownloadMedia } from "../../../application/download-media.ts";
 import { GenerateImage } from "../../../application/generate-image.ts";
+import { ImagePromptWriter } from "../../../application/image-prompt.ts";
 import { MessageLog } from "../../../application/message-log.ts";
 import { OutboxDelivery } from "../../../application/outbox-delivery.ts";
 import type { Turn } from "../../../application/persona.ts";
@@ -19,6 +20,7 @@ import { FakeMessageStore } from "../../../test-support/fakes/message-store.ts";
 import { FakeOutbox } from "../../../test-support/fakes/outbox.ts";
 import { type FakeRoute, FakePageFetcher } from "../../../test-support/fakes/page-fetcher.ts";
 import { FakeSoulStore } from "../../../test-support/fakes/soul-store.ts";
+import { FakeSubAgents } from "../../../test-support/fakes/sub-agents.ts";
 import { DiscordGateway, isEligibleChannel, isTrigger } from "./gateway.ts";
 
 const PNG: [RegExp, FakeRoute] = [/./, { contentType: "image/png", body: "IMG" }];
@@ -89,6 +91,14 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		clock,
 		logger,
 	);
+	const writers = new FakeSubAgents();
+	writers.answer = async (task) => `prompt detalhado de: ${task.text}`;
+	const prompting = new ImagePromptWriter({
+		agents: writers,
+		logger,
+		systemPromptFor: () => "",
+		turnText: (turn) => `${turn.authorName} (${turn.messageId}): ${turn.text}`,
+	});
 	const souls = new FakeSoulStore();
 	souls.ensureSeed("padrão");
 	const handlers: Record<string, (m: unknown) => void> = {};
@@ -106,6 +116,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		images: new DownloadImages(new FakePageFetcher(opts.routes ?? [PNG])),
 		media,
 		drawing,
+		prompting,
 		outbox: new OutboxDelivery(outbox, logger),
 		history: new MessageLog(messages, logger),
 		logger,
@@ -435,12 +446,12 @@ const gerar = (prompt: string, over: Record<string, unknown> = {}) =>
 	interaction({ commandName: "gerar", options: { getString: () => prompt }, ...over });
 
 describe("/gerar", () => {
-	it("gera e responde com a imagem anexada, sem agente, e registra no historico", async () => {
+	it("prepara o prompt com o sub-agente, gera e responde com a imagem anexada, e registra no historico", async () => {
 		const { gw, asked, messages, outbox, prompts } = setup();
 		const ix = gerar(" um gato de oculos ");
 		await gw.onInteraction(ix as never);
 		expect(ix.deferReply).toHaveBeenCalledTimes(1);
-		expect(prompts).toEqual(["um gato de oculos"]);
+		expect(prompts).toEqual(["prompt detalhado de: ana (i1): um gato de oculos"]);
 		expect(ix.editReply.mock.calls[0]?.[0]).toEqual({ content: "um gato de oculos", files: [{ attachment: "/outbox/c1/imagem-0.png" }] });
 		expect(outbox.discarded).toEqual(["/outbox/c1/imagem-0.png"]);
 		expect(asked).toEqual([]);

@@ -15,6 +15,7 @@ import {
 import type { DownloadImages } from "../../../application/download-images.ts";
 import type { DownloadMedia } from "../../../application/download-media.ts";
 import type { GenerateImage } from "../../../application/generate-image.ts";
+import type { ImagePromptWriter } from "../../../application/image-prompt.ts";
 import type { MessageLog } from "../../../application/message-log.ts";
 import type { OutboxDelivery } from "../../../application/outbox-delivery.ts";
 import type { Clock } from "../../../application/ports/clock.ts";
@@ -99,6 +100,8 @@ export interface GatewayDeps {
 	media: DownloadMedia;
 	/** Gerador do /gerar (OpenRouter). */
 	drawing: GenerateImage;
+	/** Reescreve o pedido do /gerar com o contexto do canal. */
+	prompting: ImagePromptWriter;
 	outbox: OutboxDelivery;
 	history: MessageLog;
 	logger: Logger;
@@ -205,19 +208,21 @@ export class DiscordGateway {
 		}
 	}
 
-	/** /gerar: imagem como anexo da resposta, com o prompt como texto. */
+	/** /gerar: o sub-agente prepara o prompt; imagem como anexo da resposta, com o pedido como texto. */
 	private async onGerar(interaction: ChatInputCommandInteraction): Promise<void> {
-		const prompt = interaction.options.getString("prompt", true).trim();
+		const request = interaction.options.getString("prompt", true).trim();
 		try {
-			// Geracao leva de segundos a minutos.
+			// Prompt + geracao levam de segundos a minutos.
 			await interaction.deferReply();
-			this.deps.history.record({
+			const author = {
 				channelId: interaction.channelId,
 				authorId: interaction.user.id,
 				authorName: interaction.user.username,
 				messageId: interaction.id,
-				body: `/gerar ${prompt}`,
-			});
+			};
+			this.deps.history.record({ ...author, body: `/gerar ${request}` });
+			const prompt = await this.deps.prompting.write({ ...author, text: request });
+			this.deps.logger.info(`gerar canal=${interaction.channelId} prompt=${prompt.slice(0, 500)}`);
 			const outcome = await this.deps.drawing.create(prompt, interaction.channelId);
 			if (!outcome.ok) {
 				await interaction.editReply(outcome.text);
@@ -225,7 +230,7 @@ export class DiscordGateway {
 			}
 			let sent = false;
 			await this.deps.outbox.deliver(interaction.channelId, async (path) => {
-				await interaction.editReply({ content: prompt, files: [{ attachment: path }] });
+				await interaction.editReply({ content: request, files: [{ attachment: path }] });
 				sent = true;
 			});
 			if (!sent) await interaction.editReply("não rolou: o Discord recusou o anexo");
