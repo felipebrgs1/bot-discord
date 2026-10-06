@@ -56,4 +56,16 @@ describe("GenerateImage", () => {
 		expect(await outbox.pending("c1")).toEqual([]);
 		expect(logger.lines.some((l) => l.startsWith("error image_generation_failed"))).toBe(true);
 	});
+
+	it("create diz se ha imagem nova no outbox", async () => {
+		const { images } = setup();
+		expect(await images.create("gato", "c1")).toEqual({ ok: true, text: expect.stringContaining("ok:") });
+		expect(await images.create("  ", "c1")).toEqual({ ok: false, text: "erro: descreva a imagem" });
+		const failing = setup({
+			generate: async () => {
+				throw new Error("sem credito");
+			},
+		});
+		expect(await failing.images.create("gato", "c1")).toEqual({ ok: false, text: "erro ao gerar imagem: sem credito" });
+	});
 });

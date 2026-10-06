@@ -1,12 +1,14 @@
 /**
  * ImageGenerator pela assinatura do ChatGPT: o endpoint de Responses do Codex
- * com a tool image_generation (gpt-image), usando o token OAuth do login do pi.
+ * com a tool image_generation (gpt-image-2.5-flare), usando o token OAuth do login do pi.
  */
 
 import type { ImageGenerator } from "../../../application/ports/image-generator.ts";
 import type { ImageData } from "../../../domain/image.ts";
 
 const ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
+/** Fixo: o flare e o rapido do GPT Image 2.5 (sem escalar para o sunburst). */
+const IMAGE_MODEL = "gpt-image-2.5-flare";
 const ACCOUNT_CLAIM = "https://api.openai.com/auth";
 /** Imagem de alta qualidade leva mais de um minuto. */
 const TIMEOUT_MS = 180_000;
@@ -81,7 +83,7 @@ export class CodexImageGenerator implements ImageGenerator {
 				stream: true,
 				instructions: "Generate the image the user describes. Follow the description faithfully.",
 				input: [{ role: "user", content: [{ type: "input_text", text: prompt }] }],
-				tools: [{ type: "image_generation", output_format: "png" }],
+				tools: [{ type: "image_generation", model: IMAGE_MODEL, output_format: "png" }],
 				tool_choice: { type: "image_generation" },
 			}),
 			signal: AbortSignal.timeout(TIMEOUT_MS),

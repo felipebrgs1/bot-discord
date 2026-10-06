@@ -14,6 +14,7 @@ import {
 } from "discord.js";
 import type { DownloadImages } from "../../../application/download-images.ts";
 import type { DownloadMedia } from "../../../application/download-media.ts";
+import type { GenerateImage } from "../../../application/generate-image.ts";
 import type { MessageLog } from "../../../application/message-log.ts";
 import type { OutboxDelivery } from "../../../application/outbox-delivery.ts";
 import type { Clock } from "../../../application/ports/clock.ts";
@@ -27,6 +28,7 @@ import type { ImageData } from "../../../domain/image.ts";
 import type { BotSettings } from "../../../domain/settings.ts";
 import { type ChannelAccess, isAllowedChannel, shouldReply } from "../../../domain/trigger.ts";
 import { BAIXAR_COMMAND_JSON } from "./baixar.ts";
+import { GERAR_COMMAND_JSON } from "./gerar.ts";
 import { collectImageUrls, type ImageCarrier, imagesOf, mergeUrls, valuesOf } from "./attachments.ts";
 import { LISTA_COMMAND_JSON, listaEmbed, MAGNET_BUTTON_PREFIX, magnetRow } from "./lista.ts";
 import { discordReplyTarget } from "./reply-target.ts";
@@ -95,6 +97,8 @@ export interface GatewayDeps {
 	games: SearchGames;
 	images: DownloadImages;
 	media: DownloadMedia;
+	/** Gerador do /gerar (OpenRouter). */
+	drawing: GenerateImage;
 	outbox: OutboxDelivery;
 	history: MessageLog;
 	logger: Logger;
@@ -140,12 +144,12 @@ export class DiscordGateway {
 
 	/** Slash commands na guild (instantaneo; global demoraria ate 1h). */
 	private async registerCommands(): Promise<void> {
-		const commands = [LISTA_COMMAND_JSON, BAIXAR_COMMAND_JSON];
+		const commands = [LISTA_COMMAND_JSON, BAIXAR_COMMAND_JSON, GERAR_COMMAND_JSON];
 		try {
 			const guildId = this.deps.config.all().discord.guild_id;
 			if (guildId) await (await this.client.guilds.fetch(guildId)).commands.set(commands);
 			else await this.client.application?.commands.set(commands);
-			this.deps.logger.info("slash commands registrados: /lista, /baixar");
+			this.deps.logger.info("slash commands registrados: /lista, /baixar, /gerar");
 		} catch (err) {
 			this.deps.logger.error(`slash commands ERRO: ${errorText(err)}`);
 		}
@@ -158,7 +162,7 @@ export class DiscordGateway {
 			return;
 		}
 		if (!interaction.isChatInputCommand()) return;
-		const handler = { lista: this.onLista, baixar: this.onBaixar }[interaction.commandName];
+		const handler = { lista: this.onLista, baixar: this.onBaixar, gerar: this.onGerar }[interaction.commandName];
 		if (!handler) return;
 		const place = { guildId: interaction.guildId, channelId: interaction.channelId };
 		if (!isAllowedChannel(place, channelAccess(this.deps.config.all()))) {
@@ -194,6 +198,37 @@ export class DiscordGateway {
 				sent++;
 			});
 			if (sent === 0) await interaction.editReply("não rolou: o Discord recusou o anexo");
+		} catch (err) {
+			const msg = `não rolou: ${errorText(err)}`;
+			if (interaction.deferred) await interaction.editReply(msg).catch(() => undefined);
+			else await interaction.reply({ content: msg, ephemeral: true }).catch(() => undefined);
+		}
+	}
+
+	/** /gerar: imagem como anexo da resposta, com o prompt como texto. */
+	private async onGerar(interaction: ChatInputCommandInteraction): Promise<void> {
+		const prompt = interaction.options.getString("prompt", true).trim();
+		try {
+			// Geracao leva de segundos a minutos.
+			await interaction.deferReply();
+			this.deps.history.record({
+				channelId: interaction.channelId,
+				authorId: interaction.user.id,
+				authorName: interaction.user.username,
+				messageId: interaction.id,
+				body: `/gerar ${prompt}`,
+			});
+			const outcome = await this.deps.drawing.create(prompt, interaction.channelId);
+			if (!outcome.ok) {
+				await interaction.editReply(outcome.text);
+				return;
+			}
+			let sent = false;
+			await this.deps.outbox.deliver(interaction.channelId, async (path) => {
+				await interaction.editReply({ content: prompt, files: [{ attachment: path }] });
+				sent = true;
+			});
+			if (!sent) await interaction.editReply("não rolou: o Discord recusou o anexo");
 		} catch (err) {
 			const msg = `não rolou: ${errorText(err)}`;
 			if (interaction.deferred) await interaction.editReply(msg).catch(() => undefined);

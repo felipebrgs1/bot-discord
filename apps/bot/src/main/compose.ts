@@ -16,6 +16,7 @@ import { codexToken } from "../adapters/out/codex/codex-token.ts";
 import { FsOutbox } from "../adapters/out/fs/outbox.ts";
 import { ChatJsonExtractor } from "../adapters/out/llm/chat-json-extractor.ts";
 import { LogBuffer } from "../adapters/out/log/log-buffer.ts";
+import { OpenRouterImageGenerator } from "../adapters/out/openrouter/openrouter-image-generator.ts";
 import { PiChatAgent } from "../adapters/out/pi-agent/pi-chat-agent.ts";
 import { PiSubAgents, type WorkerFactory } from "../adapters/out/pi-agent/pi-sub-agents.ts";
 import { piSessionFactories, type SessionFactory, SessionPool } from "../adapters/out/pi-agent/session-pool.ts";
@@ -52,6 +53,9 @@ import { WebSearchChain } from "../application/web-search-chain.ts";
 
 /** Modelo de chat que chama a tool de imagem no Codex; CODEX_IMAGE_MODEL tem precedencia. */
 const DEFAULT_CODEX_IMAGE_MODEL = "gpt-5.5";
+
+/** Modelo do /gerar no OpenRouter; OPENROUTER_IMAGE_MODEL tem precedencia. */
+const DEFAULT_OPENROUTER_IMAGE_MODEL = "inclusionai/ming-image-0.1-design";
 
 /** Instalado pelo setup do bot Go; YTDLP_BIN tem precedencia. */
 const DEFAULT_YTDLP = "/home/ubuntu/bot/botdiscord/bin/yt-dlp";
@@ -133,6 +137,17 @@ export function compose(opts: ComposeOptions) {
 		),
 		games,
 	};
+	// /gerar: OpenRouter; pedido em conversa segue no GPT Image acima.
+	const drawing = new GenerateImage(
+		new OpenRouterImageGenerator({
+			http,
+			apiKey: env("OPENROUTER_API_KEY"),
+			model: env("OPENROUTER_IMAGE_MODEL") || DEFAULT_OPENROUTER_IMAGE_MODEL,
+		}),
+		outbox,
+		systemClock,
+		log,
+	);
 	// Modelo da conversa: AGENT_MODEL=provider/id no .env; vazio = padrao do pi.
 	const agentModelText = env("AGENT_MODEL").trim();
 	const agentModel = agentModelText ? parseModelRef(agentModelText) : undefined;
@@ -173,6 +188,7 @@ export function compose(opts: ComposeOptions) {
 		games,
 		images: new DownloadImages(fetcher),
 		media: tools.media,
+		drawing,
 		outbox: new OutboxDelivery(outbox, log),
 		history: new MessageLog(messages, log),
 		logger: log,
@@ -207,6 +223,7 @@ export function compose(opts: ComposeOptions) {
 		config,
 		agent,
 		tools: (conversationId: string) => botTools(tools, conversationId),
+		drawing,
 		personality,
 		panelHandler: () => createPanelHandler(panelDeps),
 

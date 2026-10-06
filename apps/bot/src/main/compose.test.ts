@@ -168,6 +168,53 @@ describe("compose", () => {
 		app.db.close();
 	});
 
+	it("/gerar usa o OpenRouter com a chave e o ming-image por padrao e larga a imagem no outbox da raiz", async () => {
+		const root = rootWith("sou um bot");
+		const calls: string[] = [];
+		const http = (async (url: string | URL | Request, init?: RequestInit) => {
+			const model = String((JSON.parse(String(init?.body)) as { model: unknown }).model);
+			calls.push(`${String(url)} ${(init?.headers as Record<string, string>)["Authorization"]} ${model}`);
+			const images = [{ type: "image_url", image_url: { url: "data:image/png;base64,aW1n" } }];
+			return new Response(JSON.stringify({ choices: [{ message: { content: "", images } }] }));
+		}) as typeof fetch;
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { OPENROUTER_API_KEY: "or-k" },
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http,
+		});
+		expect((await app.drawing.create("gato", "c1")).ok).toBe(true);
+		expect(calls).toEqual(["https://openrouter.ai/api/v1/chat/completions Bearer or-k inclusionai/ming-image-0.1-design"]);
+		expect(readdirSync(join(root, "outbox", "c1"))).toHaveLength(1);
+		app.db.close();
+	});
+
+	it("OPENROUTER_IMAGE_MODEL troca o modelo do /gerar", async () => {
+		const models: string[] = [];
+		const http = (async (_url: string | URL | Request, init?: RequestInit) => {
+			models.push(String((JSON.parse(String(init?.body)) as { model: unknown }).model));
+			return new Response("{}");
+		}) as typeof fetch;
+		const root = rootWith("sou um bot");
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { OPENROUTER_API_KEY: "or-k", OPENROUTER_IMAGE_MODEL: "black-forest-labs/flux.2-pro" },
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http,
+		});
+		await app.drawing.create("gato", "c1");
+		expect(models).toEqual(["black-forest-labs/flux.2-pro"]);
+		app.db.close();
+	});
+
 	it("web_search usa o Tavily e cai para o Firecrawl quando o Tavily falha", async () => {
 		const root = rootWith("sou um bot");
 		const auth: string[] = [];

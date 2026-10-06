@@ -37,7 +37,7 @@ function generator(http: typeof fetch, token = TOKEN) {
 }
 
 describe("CodexImageGenerator", () => {
-	it("pede a tool image_generation ao endpoint do Codex com o token da assinatura", async () => {
+	it("pede a tool image_generation com o gpt-image-2.5-flare ao endpoint do Codex com o token da assinatura", async () => {
 		const { http, calls } = fakeHttp(200, sse({ type: "response.created" }, imageDone("aW1n"), { type: "response.completed" }));
 		await generator(http).generate("um gato");
 		expect(calls).toHaveLength(1);
@@ -51,7 +51,7 @@ describe("CodexImageGenerator", () => {
 		expect(body["model"]).toBe("gpt-5.5");
 		expect(body["stream"]).toBe(true);
 		expect(body["store"]).toBe(false);
-		expect(body["tools"]).toEqual([{ type: "image_generation", output_format: "png" }]);
+		expect(body["tools"]).toEqual([{ type: "image_generation", model: "gpt-image-2.5-flare", output_format: "png" }]);
 		expect(body["tool_choice"]).toEqual({ type: "image_generation" });
 		expect(JSON.stringify(body["input"])).toContain("um gato");
 	});

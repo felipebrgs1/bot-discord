@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "bun:test";
 import { DownloadImages } from "../../../application/download-images.ts";
 import { DownloadMedia } from "../../../application/download-media.ts";
+import { GenerateImage } from "../../../application/generate-image.ts";
 import { MessageLog } from "../../../application/message-log.ts";
 import { OutboxDelivery } from "../../../application/outbox-delivery.ts";
 import type { Turn } from "../../../application/persona.ts";
@@ -37,7 +38,7 @@ const catalog: GameCatalog = {
 	magnet: async () => "magnet:?xt=urn:btih:HASH123",
 };
 
-function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: MediaResult } = {}) {
+function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: MediaResult; drawFails?: string } = {}) {
 	const clock = new FakeClock(0);
 	const logger = new FakeLogger();
 	const config = new FakeConfigStore({ discord: { guild_id: opts.guild ?? "g1", channel_ids: ["c1"], admin_ids: ["dono"] } });
@@ -75,6 +76,19 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		{ assertPublic: async () => undefined },
 		logger,
 	);
+	const prompts: string[] = [];
+	const drawing = new GenerateImage(
+		{
+			generate: async (prompt) => {
+				prompts.push(prompt);
+				if (opts.drawFails) throw new Error(opts.drawFails);
+				return { data: "aW1n", mimeType: "image/png" };
+			},
+		},
+		outbox,
+		clock,
+		logger,
+	);
 	const souls = new FakeSoulStore();
 	souls.ensureSeed("padrão");
 	const handlers: Record<string, (m: unknown) => void> = {};
@@ -91,6 +105,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		games,
 		images: new DownloadImages(new FakePageFetcher(opts.routes ?? [PNG])),
 		media,
+		drawing,
 		outbox: new OutboxDelivery(outbox, logger),
 		history: new MessageLog(messages, logger),
 		logger,
@@ -105,7 +120,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		await new Promise((r) => setTimeout(r, 10));
 		await replies.idle();
 	};
-	return { gw, clock, asked, turns, messages, outbox, downloads, receive };
+	return { gw, clock, asked, turns, messages, outbox, downloads, prompts, receive };
 }
 
 function message(over: Record<string, unknown> = {}) {
@@ -413,5 +428,38 @@ describe("/baixar", () => {
 		expect(ix.deferReply).not.toHaveBeenCalled();
 		expect(ix.reply.mock.calls[0]?.[0]).toMatchObject({ ephemeral: true });
 		expect(downloads).toEqual([]);
+	});
+});
+
+const gerar = (prompt: string, over: Record<string, unknown> = {}) =>
+	interaction({ commandName: "gerar", options: { getString: () => prompt }, ...over });
+
+describe("/gerar", () => {
+	it("gera e responde com a imagem anexada, sem agente, e registra no historico", async () => {
+		const { gw, asked, messages, outbox, prompts } = setup();
+		const ix = gerar(" um gato de oculos ");
+		await gw.onInteraction(ix as never);
+		expect(ix.deferReply).toHaveBeenCalledTimes(1);
+		expect(prompts).toEqual(["um gato de oculos"]);
+		expect(ix.editReply.mock.calls[0]?.[0]).toEqual({ content: "um gato de oculos", files: [{ attachment: "/outbox/c1/imagem-0.png" }] });
+		expect(outbox.discarded).toEqual(["/outbox/c1/imagem-0.png"]);
+		expect(asked).toEqual([]);
+		expect(messages.messages.map((m) => m.body)).toEqual(["/gerar um gato de oculos"]);
+	});
+
+	it("falha do gerador edita com o motivo", async () => {
+		const { gw } = setup({ drawFails: "openrouter 402: sem credito" });
+		const ix = gerar("gato");
+		await gw.onInteraction(ix as never);
+		expect(ix.editReply.mock.calls[0]?.[0]).toBe("erro ao gerar imagem: openrouter 402: sem credito");
+	});
+
+	it("canal fora da allowlist recebe efemero sem gerar", async () => {
+		const { gw, prompts } = setup();
+		const ix = gerar("gato", { channelId: "c9" });
+		await gw.onInteraction(ix as never);
+		expect(ix.deferReply).not.toHaveBeenCalled();
+		expect(ix.reply.mock.calls[0]?.[0]).toMatchObject({ ephemeral: true });
+		expect(prompts).toEqual([]);
 	});
 });
