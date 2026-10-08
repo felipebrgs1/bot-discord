@@ -11,8 +11,6 @@ import { createPanelHandler, startPanel } from "../adapters/in/http-panel/server
 import { botTools } from "../adapters/in/pi-tools/bot-tools.ts";
 import { startConsolidationLoop } from "../adapters/in/scheduler/consolidation-loop.ts";
 import { systemClock } from "../adapters/out/clock/system-clock.ts";
-import { CodexImageGenerator } from "../adapters/out/codex/codex-image-generator.ts";
-import { codexToken } from "../adapters/out/codex/codex-token.ts";
 import { FsOutbox } from "../adapters/out/fs/outbox.ts";
 import { ChatJsonExtractor } from "../adapters/out/llm/chat-json-extractor.ts";
 import { LogBuffer } from "../adapters/out/log/log-buffer.ts";
@@ -52,8 +50,6 @@ import { WebChat } from "../application/web-chat.ts";
 import { WebResearch } from "../application/web-research.ts";
 import { WebSearchChain } from "../application/web-search-chain.ts";
 
-/** Modelo de chat que chama a tool de imagem no Codex; CODEX_IMAGE_MODEL tem precedencia. */
-const DEFAULT_CODEX_IMAGE_MODEL = "gpt-5.5";
 
 /** Modelo do /gerar no OpenRouter; OPENROUTER_IMAGE_MODEL tem precedencia. */
 const DEFAULT_OPENROUTER_IMAGE_MODEL = "inclusionai/ming-image-0.1-design";
@@ -78,8 +74,6 @@ export interface ComposeOptions {
 	workerFactory?: WorkerFactory;
 	/** Troca o fetch de saida (teste de montagem, sem rede). */
 	http?: typeof fetch;
-	/** Troca o token do Codex (teste de montagem, sem ler o auth.json do pi). */
-	codexToken?: () => Promise<string>;
 }
 
 export function compose(opts: ComposeOptions) {
@@ -121,33 +115,20 @@ export function compose(opts: ComposeOptions) {
 	// Casos de uso
 	const persona = new Persona(souls, memories, messages);
 	const games = new SearchGames(new SkidrowCatalog(fetcher));
+	// Imagem (conversa e /gerar): OpenRouter.
+	const imageGenerator = new OpenRouterImageGenerator({
+		http,
+		apiKey: env("OPENROUTER_API_KEY"),
+		model: env("OPENROUTER_IMAGE_MODEL") || DEFAULT_OPENROUTER_IMAGE_MODEL,
+	});
 	const tools = {
 		research: new WebResearch(new WebSearchChain(searchers), fetcher),
 		media: new DownloadMedia(new YtDlpDownloader(env("YTDLP_BIN") || DEFAULT_YTDLP, outbox), guard, log),
 		recall: new Recall(messages, memories),
-		// Imagem pela assinatura do ChatGPT: token do login openai-codex do pi.
-		images: new GenerateImage(
-			new CodexImageGenerator({
-				http,
-				token: opts.codexToken ?? codexToken(),
-				model: env("CODEX_IMAGE_MODEL") || DEFAULT_CODEX_IMAGE_MODEL,
-			}),
-			outbox,
-			systemClock,
-			log,
-		),
+		images: new GenerateImage(imageGenerator, outbox, systemClock, log),
 		games,
 	};
-	// /gerar: OpenRouter; pedido em conversa segue no GPT Image acima.
-	const drawing = new GenerateImage(
-		new OpenRouterImageGenerator({
-			http,
-			apiKey: env("OPENROUTER_API_KEY"),
-			model: env("OPENROUTER_IMAGE_MODEL") || DEFAULT_OPENROUTER_IMAGE_MODEL,
-		}),
-		outbox,
-		systemClock,
-		log,
+	const drawing = new GenerateImage(imageGenerator, outbox, systemClock, log,
 	);
 	// Modelo da conversa: AGENT_MODEL=provider/id no .env; vazio = padrao do pi.
 	const agentModelText = env("AGENT_MODEL").trim();
@@ -158,7 +139,7 @@ export function compose(opts: ComposeOptions) {
 	const agent = new PiChatAgent({ pool, metrics, model: () => agentModelText });
 	const subAgents = new PiSubAgents({ factory: opts.workerFactory ?? factories.workers, metrics, model: () => agentModelText });
 	const swarm = new Swarm(subAgents);
-	// /gerar: worker sem tools (nada de chamar o generate_image do Codex) com o contexto da Persona.
+	// /gerar: worker sem tools (nada de chamar o generate_image) com o contexto da Persona.
 	const prompting = new ImagePromptWriter({
 		agents: subAgents,
 		logger: log,

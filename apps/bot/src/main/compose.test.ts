@@ -139,31 +139,29 @@ describe("compose", () => {
 		app.db.close();
 	});
 
-	it("generate_image usa o token do Codex, o CODEX_IMAGE_MODEL e larga a imagem no outbox da raiz", async () => {
+	it("generate_image (conversa) usa so o OpenRouter, com a chave e o modelo do /gerar, e larga a imagem no outbox da raiz", async () => {
 		const root = rootWith("sou um bot");
-		const claims = Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acc" } })).toString("base64url");
-		const models: string[] = [];
-		const http = (async (_url: string | URL | Request, init?: RequestInit) => {
-			models.push(String((JSON.parse(String(init?.body)) as { model: unknown }).model));
-			const item = { type: "image_generation_call", output_format: "png", result: "aW1n" };
-			return new Response(`data: ${JSON.stringify({ type: "response.output_item.done", item })}\n\n`);
+		const calls: string[] = [];
+		const http = (async (url: string | URL | Request, init?: RequestInit) => {
+			const model = String((JSON.parse(String(init?.body)) as { model: unknown }).model);
+			calls.push(`${String(url)} ${(init?.headers as Record<string, string>)["Authorization"]} ${model}`);
+			return new Response(JSON.stringify({ data: [{ b64_json: "aW1n", media_type: "image/png" }] }));
 		}) as typeof fetch;
 		const app = compose({
 			dbPath: ":memory:",
 			root,
 			webDir: join(root, "dist"),
 			cwd: "/tmp",
-			env: { CODEX_IMAGE_MODEL: "gpt-x" },
+			env: { OPENROUTER_API_KEY: "or-k" },
 			sessionFactory: fakeSessions,
 			workerFactory: fakeWorkers,
 			http,
-			codexToken: async () => `h.${claims}.s`,
 		});
 		const tool = app.tools("c1").find((t) => t.name === "generate_image");
 		const result = await tool?.execute("t", { prompt: "gato" } as never, undefined as never, undefined as never, {} as never);
 		const first = result?.content[0];
 		expect(first?.type === "text" ? first.text : "").toStartWith("ok:");
-		expect(models).toEqual(["gpt-x"]);
+		expect(calls).toEqual(["https://openrouter.ai/api/v1/images Bearer or-k inclusionai/ming-image-0.1-design"]);
 		expect(readdirSync(join(root, "outbox", "c1"))).toHaveLength(1);
 		app.db.close();
 	});

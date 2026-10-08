@@ -62,7 +62,7 @@ export function botTools(services: ToolServices, channelId: string): ToolDefinit
 			name: "generate_image",
 			label: "Gerar imagem",
 			description:
-				"Gera uma imagem a partir de uma descrição (GPT Image) e ENVIA como anexo ao canal automaticamente. Descreva com detalhe: assunto, estilo, cores, enquadramento e qualquer texto que deva aparecer. Demora até um minuto.",
+				"Gera uma imagem a partir de uma descrição e ENVIA como anexo ao canal automaticamente. Descreva com detalhe: assunto, estilo, cores, enquadramento e qualquer texto que deva aparecer. Demora até um minuto.",
 			parameters: Type.Object({ prompt: Type.String({ description: "Descrição detalhada da imagem" }) }),
 			execute: async (_id, p) => textResult(await images.run(p.prompt ?? "", channelId)),
 		}),
