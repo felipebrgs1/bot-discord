@@ -101,7 +101,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 	});
 	const souls = new FakeSoulStore();
 	souls.ensureSeed("padrão");
-	const handlers: Record<string, (m: unknown) => void> = {};
+	const handlers: Record<string, (...args: unknown[]) => void> = {};
 	const client = {
 		once: () => undefined,
 		on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
@@ -131,7 +131,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		await new Promise((r) => setTimeout(r, 10));
 		await replies.idle();
 	};
-	return { gw, clock, asked, turns, messages, outbox, downloads, prompts, receive };
+	return { gw, clock, asked, turns, messages, outbox, downloads, prompts, receive, logger, handlers };
 }
 
 function message(over: Record<string, unknown> = {}) {
@@ -472,5 +472,25 @@ describe("/gerar", () => {
 		expect(ix.deferReply).not.toHaveBeenCalled();
 		expect(ix.reply.mock.calls[0]?.[0]).toMatchObject({ ephemeral: true });
 		expect(prompts).toEqual([]);
+	});
+});
+
+describe("erros do cliente Discord", () => {
+	it("registra erro de shard no log", () => {
+		const { logger, handlers } = setup();
+		handlers["shardError"]?.(new Error("conexao caiu"), 0);
+		expect(logger.lines).toContain("error shard ERRO: conexao caiu");
+	});
+
+	it("exceção numa interação vira log e não escapa do listener", async () => {
+		const { logger, handlers } = setup();
+		const quebrada = {
+			isButton: () => {
+				throw new Error("quebrou");
+			},
+		};
+		handlers["interactionCreate"]?.(quebrada);
+		await new Promise((r) => setTimeout(r, 10));
+		expect(logger.lines).toContain("error interacao ERRO: quebrou");
 	});
 });

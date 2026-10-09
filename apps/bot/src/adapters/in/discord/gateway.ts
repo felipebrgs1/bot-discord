@@ -136,8 +136,10 @@ export class DiscordGateway {
 			this.deps.logger.info(`logado no Discord como ${c.user.tag}`);
 			void this.registerCommands();
 		});
-		this.client.on(Events.MessageCreate, (m) => void this.onMessage(m as Message));
-		this.client.on(Events.InteractionCreate, (i) => void this.onInteraction(i as Interaction));
+		// Erro de evento vira log: promise solta sem catch derrubaria o processo.
+		this.client.on(Events.ShardError, (err) => this.deps.logger.error(`shard ERRO: ${errorText(err)}`));
+		this.client.on(Events.MessageCreate, (m) => void this.onMessage(m as Message).catch((err) => this.deps.logger.error(`mensagem ERRO: ${errorText(err)}`)));
+		this.client.on(Events.InteractionCreate, (i) => void this.onInteraction(i as Interaction).catch((err) => this.deps.logger.error(`interacao ERRO: ${errorText(err)}`)));
 		await this.client.login(token);
 	}
 
