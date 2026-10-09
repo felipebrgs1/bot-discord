@@ -339,8 +339,14 @@ export function createPanelHandler(deps: PanelServerDeps): (req: IncomingMessage
 	}
 }
 
-export function startPanel(deps: PanelServerDeps, port: number, host: string): Server {
+/** Resolve so quando a porta esta escutando; porta ocupada rejeita antes de qualquer outra coisa. */
+export function startPanel(deps: PanelServerDeps, port: number, host: string): Promise<Server> {
 	const server = createServer(createPanelHandler(deps));
-	server.listen(port, host);
-	return server;
+	return new Promise((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(port, host, () => {
+			server.off("error", reject);
+			resolve(server);
+		});
+	});
 }

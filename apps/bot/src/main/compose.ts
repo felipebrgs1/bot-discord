@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { join } from "node:path";
+import type { Client } from "discord.js";
 import { DiscordGateway } from "../adapters/in/discord/gateway.ts";
 import { createPanelHandler, startPanel } from "../adapters/in/http-panel/server.ts";
 import { botTools } from "../adapters/in/pi-tools/bot-tools.ts";
@@ -74,6 +75,10 @@ export interface ComposeOptions {
 	workerFactory?: WorkerFactory;
 	/** Troca o fetch de saida (teste de montagem, sem rede). */
 	http?: typeof fetch;
+	/** Troca o cliente do Discord (teste de montagem, sem login real). */
+	discordClient?: Client;
+	/** Troca o servidor do painel (teste de montagem: porta ocupada). */
+	startPanel?: typeof startPanel;
 }
 
 export function compose(opts: ComposeOptions) {
@@ -170,6 +175,7 @@ export function compose(opts: ComposeOptions) {
 
 	// Adapters de entrada
 	const gateway = new DiscordGateway({
+		client: opts.discordClient,
 		config,
 		replies,
 		commands: new TextCommands({ games, souls, sessions: agent, adminIds: () => config.all().discord.admin_ids }),
@@ -222,13 +228,14 @@ export function compose(opts: ComposeOptions) {
 			const token = env("DISCORD_TOKEN");
 			if (!token) throw new Error("DISCORD_TOKEN não definido no ambiente");
 			const stopConsolidation = startConsolidation();
-			await gateway.start(token);
+			// Painel antes do login: porta ocupada falha sem gastar identify da cota do Discord.
 			const port = env("DASHBOARD_PORT") ? Number(env("DASHBOARD_PORT")) : 8080;
 			let server: Server | undefined;
 			if (port > 0) {
-				server = startPanel(panelDeps, port, env("DASHBOARD_HOST") || "127.0.0.1");
+				server = await (opts.startPanel ?? startPanel)(panelDeps, port, env("DASHBOARD_HOST") || "127.0.0.1");
 				log.info(`painel em http://127.0.0.1:${port}`);
 			}
+			await gateway.start(token);
 			let stopping = false;
 			return async () => {
 				if (stopping) return;

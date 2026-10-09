@@ -284,4 +284,65 @@ describe("compose", () => {
 		await expect(app.start()).rejects.toThrow("DISCORD_TOKEN não definido");
 		app.db.close();
 	});
+
+	/** Cliente Discord falso: conta logins e registra a ordem com o painel. */
+	function fakeDiscord(ordem: string[]) {
+		let logins = 0;
+		const client = {
+			once: () => undefined,
+			on: () => undefined,
+			login: async () => {
+				logins++;
+				ordem.push("login");
+			},
+			destroy: () => undefined,
+		};
+		return { client, logins: () => logins };
+	}
+
+	it("sobe o painel antes de logar no Discord", async () => {
+		const ordem: string[] = [];
+		const discord = fakeDiscord(ordem);
+		const root = rootWith("sou um bot");
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { DISCORD_TOKEN: "tok", DASHBOARD_PORT: "8080" },
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http: noNetwork,
+			discordClient: discord.client as never,
+			startPanel: async () => {
+				ordem.push("painel");
+				return { close: (cb?: () => void) => cb?.() } as never;
+			},
+		});
+		const stop = await app.start();
+		await stop();
+		expect(ordem).toEqual(["painel", "login"]);
+	});
+
+	it("porta do painel ocupada: erro antes de qualquer login no Discord", async () => {
+		const discord = fakeDiscord([]);
+		const root = rootWith("sou um bot");
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { DISCORD_TOKEN: "tok", DASHBOARD_PORT: "8080" },
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http: noNetwork,
+			discordClient: discord.client as never,
+			startPanel: async () => {
+				throw new Error("EADDRINUSE: porta 8080 ocupada");
+			},
+		});
+		await expect(app.start()).rejects.toThrow("EADDRINUSE");
+		expect(discord.logins()).toBe(0);
+		app.db.close();
+	});
 });
