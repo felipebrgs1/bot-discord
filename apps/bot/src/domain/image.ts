@@ -6,8 +6,10 @@ export interface ImageData {
 
 /** Quantas imagens entram numa resposta. */
 export const MAX_VISION_IMAGES = 3;
-/** Teto por imagem (3 imagens por turno, em base64 ~4 MB no total). */
-export const MAX_IMAGE_BYTES = 1 << 20;
+/** Teto por imagem que vai ao modelo (ate 3 por turno). Acima disso, comprime. */
+export const MAX_IMAGE_BYTES = 3 << 20;
+/** Teto do download bruto; acima disso nem tenta comprimir. */
+export const MAX_DOWNLOAD_BYTES = 20 << 20;
 
 /** Sub-agente do /gerar: transforma o pedido do usuario num prompt de imagem. */
 export const IMAGE_PROMPT_INSTRUCTIONS = `Você escreve prompts para um modelo de geração de imagem. Recebe o pedido de alguém num grupo do Discord, com o que se sabe do grupo, de quem pediu e a conversa recente.

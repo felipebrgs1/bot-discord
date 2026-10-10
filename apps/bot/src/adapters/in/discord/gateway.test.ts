@@ -14,6 +14,7 @@ import { SearchGames } from "../../../application/search-games.ts";
 import { TextCommands } from "../../../application/text-commands.ts";
 import { defaultSettings } from "../../../domain/settings.ts";
 import { FakeClock } from "../../../test-support/fakes/clock.ts";
+import { FakeImageShrinker } from "../../../test-support/fakes/image-shrinker.ts";
 import { FakeConfigStore } from "../../../test-support/fakes/config-store.ts";
 import { FakeLogger } from "../../../test-support/fakes/logger.ts";
 import { FakeMessageStore } from "../../../test-support/fakes/message-store.ts";
@@ -113,7 +114,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		replies,
 		commands: new TextCommands({ games, souls, sessions: { conversations: () => [], forget: () => undefined }, adminIds: () => ["dono"] }),
 		games,
-		images: new DownloadImages(new FakePageFetcher(opts.routes ?? [PNG])),
+		images: new DownloadImages(new FakePageFetcher(opts.routes ?? [PNG]), new FakeImageShrinker()),
 		media,
 		drawing,
 		prompting,

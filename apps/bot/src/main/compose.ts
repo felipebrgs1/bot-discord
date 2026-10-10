@@ -27,6 +27,7 @@ import { SqliteMetrics } from "../adapters/out/sqlite/metrics.ts";
 import { SqliteSoulStore } from "../adapters/out/sqlite/soul-store.ts";
 import { FirecrawlSearch } from "../adapters/out/web/firecrawl-search.ts";
 import { DnsHostGuard } from "../adapters/out/web/host-guard.ts";
+import { FfmpegImageShrinker } from "../adapters/out/image/ffmpeg-image-shrinker.ts";
 import { HttpPageFetcher } from "../adapters/out/web/http-fetcher.ts";
 import { SkidrowCatalog } from "../adapters/out/web/skidrow-catalog.ts";
 import { TavilySearch } from "../adapters/out/web/tavily-search.ts";
@@ -180,7 +181,7 @@ export function compose(opts: ComposeOptions) {
 		replies,
 		commands: new TextCommands({ games, souls, sessions: agent, adminIds: () => config.all().discord.admin_ids }),
 		games,
-		images: new DownloadImages(fetcher),
+		images: new DownloadImages(fetcher, new FfmpegImageShrinker()),
 		media: tools.media,
 		drawing,
 		prompting,
