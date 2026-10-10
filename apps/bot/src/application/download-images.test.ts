@@ -10,6 +10,11 @@ describe("DownloadImages", () => {
 		]);
 	});
 
+	it("descarta imagem acima de 1MB", async () => {
+		const fetcher = new FakePageFetcher([[/big/, { contentType: "image/png", bytes: new Uint8Array((1 << 20) + 1) }]]);
+		expect(await new DownloadImages(fetcher).run(["https://x/big"])).toEqual([]);
+	});
+
 	it("descarta nao-imagem, vazia, gigante (>5MB), HTTP de erro e falha de rede", async () => {
 		const fetcher = new FakePageFetcher([
 			[/html/, { contentType: "text/html", body: "<p>" }],

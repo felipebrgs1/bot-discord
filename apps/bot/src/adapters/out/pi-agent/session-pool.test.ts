@@ -85,6 +85,27 @@ describe("SessionPool", () => {
 		]);
 	});
 
+	it("ask troca as imagens do historico por marcador depois do turno, mantendo o texto", async () => {
+		const pool = new SessionPool(stubFactory().factory);
+		const messages: unknown[] = [];
+		const session = {
+			...stubSession("ok"),
+			agent: { state: { messages } },
+			prompt: async (text: string, opts?: { images?: unknown[] }) => {
+				messages.push({
+					role: "user",
+					content: [{ type: "text", text }, ...(opts?.images ?? [])],
+				});
+			},
+		} as unknown as AgentSession;
+		await pool.ask(session, "olha isso", [{ type: "image", data: "AAA", mimeType: "image/png" }]);
+		await pool.ask(session, "e agora?");
+		const user = (session.agent.state.messages as { content: { type: string }[] }[])[0];
+		expect(user?.content.map((c) => c.type)).toEqual(["text", "text"]);
+		expect(JSON.stringify(session.agent.state.messages)).not.toContain("AAA");
+		expect(JSON.stringify(session.agent.state.messages)).toContain("olha isso");
+	});
+
 	it("ask propaga o erro do provedor quando o turno termina em erro", async () => {
 		const pool = new SessionPool(stubFactory().factory);
 		const session = {

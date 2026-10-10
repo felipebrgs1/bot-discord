@@ -149,10 +149,29 @@ export function piSessionFactories(
 	};
 }
 
+/** Marca no lugar da imagem que ja foi respondida; o texto da mensagem fica. */
+const IMAGE_PLACEHOLDER = "[imagem enviada antes]";
+
+/**
+ * Imagem so vale para o turno em que chegou. Sem isso, cada prompt reenvia
+ * todas as fotos da conversa e o corpo passa do limite do provedor (413).
+ */
+function dropImagesFromHistory(session: AgentSession): void {
+	const state = session.agent?.state;
+	if (!state) return;
+	state.messages = state.messages.map((m) => {
+		if (m.role !== "user" || typeof m.content === "string") return m;
+		if (!m.content.some((c) => c.type === "image")) return m;
+		const content = m.content.map((c) => (c.type === "image" ? { type: "text" as const, text: IMAGE_PLACEHOLDER } : c));
+		return { ...m, content };
+	});
+}
+
 /** Pergunta e devolve o texto final do assistente; erro do provedor lanca. */
 export async function askSession(session: AgentSession, text: string, images?: ImageContent[]): Promise<string> {
 	await session.prompt(text, images?.length ? { images } : undefined);
 	if (typeof session.waitForIdle === "function") await session.waitForIdle();
+	dropImagesFromHistory(session);
 	// Erro do provedor (rate limit, rede...) fica so na mensagem; sem isso vira resposta vazia.
 	const last = session.messages?.findLast((m) => m.role === "assistant");
 	if (last?.role === "assistant" && last.stopReason === "error") {
