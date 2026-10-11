@@ -4,6 +4,7 @@ import { DownloadMedia } from "../../../application/download-media.ts";
 import { GenerateImage } from "../../../application/generate-image.ts";
 import { ImagePromptWriter } from "../../../application/image-prompt.ts";
 import { MessageLog } from "../../../application/message-log.ts";
+import { NudgeControl } from "../../../application/nudge-control.ts";
 import { OutboxDelivery } from "../../../application/outbox-delivery.ts";
 import type { Turn } from "../../../application/persona.ts";
 import type { ChatRequest } from "../../../application/ports/chat-agent.ts";
@@ -126,6 +127,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 			adminIds: () => ["dono"],
 			nudge: async (channelId) => void nudged.push(channelId),
 		}),
+		nudgeControl: new NudgeControl({ config, adminIds: () => ["dono"] }),
 		games,
 		images: new DownloadImages(new FakePageFetcher(opts.routes ?? [PNG]), new FakeImageShrinker()),
 		media,
@@ -145,7 +147,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		await new Promise((r) => setTimeout(r, 10));
 		await replies.idle();
 	};
-	return { gw, clock, asked, turns, messages, outbox, downloads, prompts, receive, logger, handlers, channelSends, nudged };
+	return { gw, clock, config, asked, turns, messages, outbox, downloads, prompts, receive, logger, handlers, channelSends, nudged };
 }
 
 function message(over: Record<string, unknown> = {}) {
@@ -495,6 +497,40 @@ describe("/gerar", () => {
 		expect(ix.deferReply).not.toHaveBeenCalled();
 		expect(ix.reply.mock.calls[0]?.[0]).toMatchObject({ ephemeral: true });
 		expect(prompts).toEqual([]);
+	});
+});
+
+const cutucar = (opts: { ligado?: boolean; minutos?: number }, over: Record<string, unknown> = {}) =>
+	interaction({
+		commandName: "cutucar",
+		user: { id: "dono", username: "dono" },
+		options: { getBoolean: () => opts.ligado ?? null, getInteger: () => opts.minutos ?? null },
+		...over,
+	});
+
+describe("/cutucar", () => {
+	it("dono desliga e troca o tempo; resposta efemera, fora do historico", async () => {
+		const { gw, config, messages } = setup();
+		const ix = cutucar({ ligado: false, minutos: 45 });
+		await gw.onInteraction(ix as never);
+		expect(ix.reply.mock.calls[0]?.[0]).toEqual({ content: "cutucão desligado.", ephemeral: true });
+		expect(config.all().nudge).toMatchObject({ enabled: false, idle_min: 45 });
+		expect(messages.messages).toEqual([]);
+	});
+
+	it("sem opcoes mostra o estado", async () => {
+		const { gw } = setup();
+		const ix = cutucar({});
+		await gw.onInteraction(ix as never);
+		expect(ix.reply.mock.calls[0]?.[0]).toEqual({ content: "cutucão ligado: puxo assunto depois de 30 min de canal parado.", ephemeral: true });
+	});
+
+	it("quem nao e dono nao muda nada", async () => {
+		const { gw, config } = setup();
+		const ix = cutucar({ ligado: false }, { user: { id: "u1", username: "ana" } });
+		await gw.onInteraction(ix as never);
+		expect(ix.reply.mock.calls[0]?.[0]).toEqual({ content: "só o dono mexe no cutucão.", ephemeral: true });
+		expect(config.all().nudge.enabled).toBe(true);
 	});
 });
 

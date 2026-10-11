@@ -40,6 +40,7 @@ import { GenerateImage } from "../application/generate-image.ts";
 import { IdleNudge } from "../application/idle-nudge.ts";
 import { ImagePromptWriter } from "../application/image-prompt.ts";
 import { MessageLog } from "../application/message-log.ts";
+import { NudgeControl } from "../application/nudge-control.ts";
 import { OutboxDelivery } from "../application/outbox-delivery.ts";
 import { Panel } from "../application/panel.ts";
 import { Persona } from "../application/persona.ts";
@@ -194,6 +195,7 @@ export function compose(opts: ComposeOptions) {
 			// nudge e criado logo abaixo (depende do gateway); so roda depois da montagem.
 			nudge: (channelId) => nudge.force(channelId),
 		}),
+		nudgeControl: new NudgeControl({ config, adminIds: () => config.all().discord.admin_ids }),
 		games,
 		images: new DownloadImages(fetcher, new FfmpegImageShrinker()),
 		media: tools.media,

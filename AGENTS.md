@@ -100,9 +100,9 @@ src/
     *.ts           casos de uso: ReplyToMessage, TextCommands, Persona, MessageLog,
                    AgentMemory, ReviewMemory, Recall, WebResearch, SearchGames, DownloadMedia,
                    DownloadImages, GenerateImage, ImagePromptWriter, OutboxDelivery, WebChat, Swarm, Panel,
-                   IdleNudge
+                   IdleNudge, NudgeControl
   adapters/
-    in/            discord (gateway, anexos, /lista, /baixar, /gerar, ReplyTarget), http-panel,
+    in/            discord (gateway, anexos, /lista, /baixar, /gerar, /cutucar, ReplyTarget), http-panel,
                    pi-tools (tools do agente), scheduler (revisao de memoria, cutucao)
     out/           sqlite, pi-agent, web (fetcher, guarda SSRF, busca Tavily/Firecrawl, Skidrow),
                    llm (extrator), codex (GPT Image pela assinatura),

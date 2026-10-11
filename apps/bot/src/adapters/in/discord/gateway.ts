@@ -17,6 +17,7 @@ import type { DownloadMedia } from "../../../application/download-media.ts";
 import type { GenerateImage } from "../../../application/generate-image.ts";
 import type { ImagePromptWriter } from "../../../application/image-prompt.ts";
 import type { MessageLog } from "../../../application/message-log.ts";
+import type { NudgeControl } from "../../../application/nudge-control.ts";
 import type { OutboxDelivery } from "../../../application/outbox-delivery.ts";
 import type { Clock } from "../../../application/ports/clock.ts";
 import type { ConfigStore } from "../../../application/ports/config-store.ts";
@@ -29,6 +30,7 @@ import type { ImageData } from "../../../domain/image.ts";
 import type { BotSettings } from "../../../domain/settings.ts";
 import { type ChannelAccess, isAllowedChannel, shouldReply } from "../../../domain/trigger.ts";
 import { BAIXAR_COMMAND_JSON } from "./baixar.ts";
+import { CUTUCAR_COMMAND_JSON } from "./cutucar.ts";
 import { GERAR_COMMAND_JSON } from "./gerar.ts";
 import { collectImageUrls, type ImageCarrier, imagesOf, mergeUrls, valuesOf } from "./attachments.ts";
 import { LISTA_COMMAND_JSON, listaEmbed, MAGNET_BUTTON_PREFIX, magnetRow } from "./lista.ts";
@@ -95,6 +97,8 @@ export interface GatewayDeps {
 	config: ConfigStore;
 	replies: ReplyToMessage;
 	commands: TextCommands;
+	/** Toggle e tempo do cutucao (/cutucar). */
+	nudgeControl: NudgeControl;
 	games: SearchGames;
 	images: DownloadImages;
 	media: DownloadMedia;
@@ -149,12 +153,12 @@ export class DiscordGateway {
 
 	/** Slash commands na guild (instantaneo; global demoraria ate 1h). */
 	private async registerCommands(): Promise<void> {
-		const commands = [LISTA_COMMAND_JSON, BAIXAR_COMMAND_JSON, GERAR_COMMAND_JSON];
+		const commands = [LISTA_COMMAND_JSON, BAIXAR_COMMAND_JSON, GERAR_COMMAND_JSON, CUTUCAR_COMMAND_JSON];
 		try {
 			const guildId = this.deps.config.all().discord.guild_id;
 			if (guildId) await (await this.client.guilds.fetch(guildId)).commands.set(commands);
 			else await this.client.application?.commands.set(commands);
-			this.deps.logger.info("slash commands registrados: /lista, /baixar, /gerar");
+			this.deps.logger.info("slash commands registrados: /lista, /baixar, /gerar, /cutucar");
 		} catch (err) {
 			this.deps.logger.error(`slash commands ERRO: ${errorText(err)}`);
 		}
@@ -167,7 +171,7 @@ export class DiscordGateway {
 			return;
 		}
 		if (!interaction.isChatInputCommand()) return;
-		const handler = { lista: this.onLista, baixar: this.onBaixar, gerar: this.onGerar }[interaction.commandName];
+		const handler = { lista: this.onLista, baixar: this.onBaixar, gerar: this.onGerar, cutucar: this.onCutucar }[interaction.commandName];
 		if (!handler) return;
 		const place = { guildId: interaction.guildId, channelId: interaction.channelId };
 		if (!isAllowedChannel(place, channelAccess(this.deps.config.all()))) {
@@ -175,6 +179,16 @@ export class DiscordGateway {
 			return;
 		}
 		await handler.call(this, interaction);
+	}
+
+	/** /cutucar: config do dono, resposta so para ele e fora do historico (nao conta como fala no canal). */
+	private async onCutucar(interaction: ChatInputCommandInteraction): Promise<void> {
+		const content = this.deps.nudgeControl.apply({
+			authorId: interaction.user.id,
+			enabled: interaction.options.getBoolean("ligado") ?? undefined,
+			idleMin: interaction.options.getInteger("minutos") ?? undefined,
+		});
+		await interaction.reply({ content, ephemeral: true });
 	}
 
 	/** /baixar: video como anexo da resposta (1o arquivo) e follow-ups (resto). */

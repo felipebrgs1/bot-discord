@@ -404,6 +404,55 @@ describe("compose", () => {
 		expect(replies).toEqual([]);
 	});
 
+	it("/cutucar do dono desliga o cutucao no SQLite e o canal parado fica quieto", async () => {
+		const sent: [string, string][] = [];
+		const handlers: Record<string, (m: unknown) => void> = {};
+		const client = {
+			...fakeDiscord([]).client,
+			on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+			channels: {
+				fetch: async (id: string) => ({ isSendable: () => true, send: async (text: string) => void sent.push([id, text]) }),
+			},
+		};
+		const root = rootWith("sou um bot");
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { DISCORD_TOKEN: "tok", DASHBOARD_PORT: "0" },
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http: noNetwork,
+			discordClient: client as never,
+		});
+		app.config.set("discord", { guild_id: "g1", channel_ids: ["c1"], admin_ids: ["dono"] });
+		app.config.set("nudge.quiet_end_hour", 0);
+		const stop = await app.start();
+		const replies: unknown[] = [];
+		handlers["interactionCreate"]?.({
+			commandName: "cutucar",
+			isButton: () => false,
+			isChatInputCommand: () => true,
+			guildId: "g1",
+			channelId: "c1",
+			user: { id: "dono", username: "dono" },
+			options: { getBoolean: () => false, getInteger: () => 45 },
+			reply: async (payload: unknown) => void replies.push(payload),
+		});
+		await new Promise((r) => setTimeout(r, 20));
+		expect(replies).toEqual([{ content: "cutucão desligado.", ephemeral: true }]);
+		const saved = app.db.prepare("SELECT key, value FROM config ORDER BY key;").all();
+		expect(saved).toContainEqual({ key: "nudge.enabled", value: "false" });
+		expect(saved).toContainEqual({ key: "nudge.idle_min", value: "45" });
+		app.db
+			.prepare("INSERT INTO messages (channel_id, author_id, author_name, message_id, body, created_at, from_bot) VALUES (?,?,?,?,?,?,0);")
+			.run("c1", "u1", "ana", "m1", "oi", new Date(Date.now() - 46 * 60_000).toISOString());
+		await app.nudge.tick();
+		await stop();
+		expect(sent).toEqual([]);
+	});
+
 	it("porta do painel ocupada: erro antes de qualquer login no Discord", async () => {
 		const discord = fakeDiscord([]);
 		const root = rootWith("sou um bot");

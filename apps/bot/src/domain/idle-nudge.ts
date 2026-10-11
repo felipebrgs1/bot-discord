@@ -57,3 +57,6 @@ export function nudgeText(idleMin: number | undefined, recent: readonly { author
 		.filter(Boolean)
 		.join("\n");
 }
+
+/** Faixa aceita para o tempo de silencio (minutos inteiros) ao mudar pelo /cutucar. */
+export const IDLE_MIN_RANGE = { min: 5, max: 1440 } as const;
