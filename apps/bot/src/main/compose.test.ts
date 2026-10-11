@@ -324,6 +324,86 @@ describe("compose", () => {
 		expect(ordem).toEqual(["painel", "login"]);
 	});
 
+	it("cutucao: canal da allowlist parado ha 30 min recebe pelo Discord a fala de um worker sem tools", async () => {
+		const sent: [string, string][] = [];
+		const client = {
+			...fakeDiscord([]).client,
+			channels: {
+				fetch: async (id: string) => ({ isSendable: () => true, send: async (text: string) => void sent.push([id, text]) }),
+			},
+		};
+		const root = rootWith("sou um bot");
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: {},
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http: noNetwork,
+			discordClient: client as never,
+		});
+		app.config.set("discord", { channel_ids: ["c1"] });
+		// Sem horario de silencio: o teste nao depende da hora em que roda.
+		app.config.set("nudge.quiet_end_hour", 0);
+		app.db
+			.prepare("INSERT INTO messages (channel_id, author_id, author_name, message_id, body, created_at, from_bot) VALUES (?,?,?,?,?,?,0);")
+			.run("c1", "u1", "ana", "m1", "oi", new Date(Date.now() - 31 * 60_000).toISOString());
+		workerCalls.length = 0;
+		await app.nudge.tick();
+		expect(workerCalls).toHaveLength(1);
+		expect(workerCalls[0]?.[0]).toContain("ana: oi");
+		expect(workerCalls[0]?.[1]).toBe(false);
+		expect(sent).toEqual([["c1", '{"tasks": ["A", "B"]}']]);
+		app.db.close();
+	});
+
+	it("!cutucar do dono no Discord manda o cutucao no canal", async () => {
+		const sent: [string, string][] = [];
+		const handlers: Record<string, (m: unknown) => void> = {};
+		const client = {
+			...fakeDiscord([]).client,
+			on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+			channels: {
+				fetch: async (id: string) => ({ isSendable: () => true, send: async (text: string) => void sent.push([id, text]) }),
+			},
+		};
+		const root = rootWith("sou um bot");
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { DISCORD_TOKEN: "tok", DASHBOARD_PORT: "0" },
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http: noNetwork,
+			discordClient: client as never,
+		});
+		app.config.set("discord", { guild_id: "g1", channel_ids: ["c1"], admin_ids: ["dono"] });
+		const stop = await app.start();
+		const replies: string[] = [];
+		handlers["messageCreate"]?.({
+			id: "m1",
+			guildId: "g1",
+			channelId: "c1",
+			author: { id: "dono", username: "dono", bot: false, system: false },
+			webhookId: null,
+			content: "!cutucar",
+			cleanContent: "!cutucar",
+			mentions: { users: { size: 0 }, has: () => false },
+			attachments: new Map(),
+			stickers: new Map(),
+			reply: async (text: string) => void replies.push(text),
+			channel: { messages: { cache: new Map() } },
+		});
+		await new Promise((r) => setTimeout(r, 20));
+		await stop();
+		expect(sent).toEqual([["c1", '{"tasks": ["A", "B"]}']]);
+		expect(replies).toEqual([]);
+	});
+
 	it("porta do painel ocupada: erro antes de qualquer login no Discord", async () => {
 		const discord = fakeDiscord([]);
 		const root = rootWith("sou um bot");

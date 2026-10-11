@@ -11,6 +11,7 @@ import { DiscordGateway } from "../adapters/in/discord/gateway.ts";
 import { createPanelHandler, startPanel } from "../adapters/in/http-panel/server.ts";
 import { botTools } from "../adapters/in/pi-tools/bot-tools.ts";
 import { startConsolidationLoop } from "../adapters/in/scheduler/consolidation-loop.ts";
+import { startNudgeLoop } from "../adapters/in/scheduler/nudge-loop.ts";
 import { systemClock } from "../adapters/out/clock/system-clock.ts";
 import { FsOutbox } from "../adapters/out/fs/outbox.ts";
 import { ChatJsonExtractor } from "../adapters/out/llm/chat-json-extractor.ts";
@@ -36,6 +37,7 @@ import { ConsolidateMemory } from "../application/consolidate-memory.ts";
 import { DownloadImages } from "../application/download-images.ts";
 import { DownloadMedia } from "../application/download-media.ts";
 import { GenerateImage } from "../application/generate-image.ts";
+import { IdleNudge } from "../application/idle-nudge.ts";
 import { ImagePromptWriter } from "../application/image-prompt.ts";
 import { MessageLog } from "../application/message-log.ts";
 import { OutboxDelivery } from "../application/outbox-delivery.ts";
@@ -52,6 +54,8 @@ import { WebChat } from "../application/web-chat.ts";
 import { WebResearch } from "../application/web-research.ts";
 import { WebSearchChain } from "../application/web-search-chain.ts";
 
+/** Frequencia com que o cutucao verifica os canais parados. */
+const NUDGE_CHECK_MS = 60_000;
 
 /** Modelo do /gerar no OpenRouter; OPENROUTER_IMAGE_MODEL tem precedencia. */
 const DEFAULT_OPENROUTER_IMAGE_MODEL = "inclusionai/ming-image-0.1-design";
@@ -179,7 +183,14 @@ export function compose(opts: ComposeOptions) {
 		client: opts.discordClient,
 		config,
 		replies,
-		commands: new TextCommands({ games, souls, sessions: agent, adminIds: () => config.all().discord.admin_ids }),
+		commands: new TextCommands({
+			games,
+			souls,
+			sessions: agent,
+			adminIds: () => config.all().discord.admin_ids,
+			// nudge e criado logo abaixo (depende do gateway); so roda depois da montagem.
+			nudge: (channelId) => nudge.force(channelId),
+		}),
 		games,
 		images: new DownloadImages(fetcher, new FfmpegImageShrinker()),
 		media: tools.media,
@@ -189,6 +200,19 @@ export function compose(opts: ComposeOptions) {
 		history: new MessageLog(messages, log),
 		logger: log,
 		clock: systemClock,
+	});
+	// Cutucao de canal parado: fala pelo gateway, que grava no historico e marca o cutucao.
+	const nudge = new IdleNudge({
+		messages,
+		agents: subAgents,
+		clock: systemClock,
+		logger: log,
+		settings: () => {
+			const s = config.all();
+			return { channelIds: s.discord.channel_ids, nudge: s.nudge };
+		},
+		instructionsFor: (channelId) => [personality(), persona.systemPromptFor(channelId)].filter(Boolean).join("\n\n"),
+		send: (channelId, chunks) => gateway.say(channelId, chunks),
 	});
 	const panelDeps = {
 		panel,
@@ -221,10 +245,11 @@ export function compose(opts: ComposeOptions) {
 		tools: (conversationId: string) => botTools(tools, conversationId),
 		drawing,
 		prompting,
+		nudge,
 		personality,
 		panelHandler: () => createPanelHandler(panelDeps),
 
-		/** Liga Discord, consolidacao e painel; devolve o desligamento. */
+		/** Liga Discord, consolidacao, cutucao e painel; devolve o desligamento. */
 		async start(): Promise<() => Promise<void>> {
 			const token = env("DISCORD_TOKEN");
 			if (!token) throw new Error("DISCORD_TOKEN não definido no ambiente");
@@ -237,11 +262,13 @@ export function compose(opts: ComposeOptions) {
 				log.info(`painel em http://127.0.0.1:${port}`);
 			}
 			await gateway.start(token);
+			const stopNudge = startNudgeLoop(nudge, NUDGE_CHECK_MS);
 			let stopping = false;
 			return async () => {
 				if (stopping) return;
 				stopping = true;
 				stopConsolidation?.();
+				stopNudge();
 				config.dispose();
 				replies.stop();
 				await gateway.stop();

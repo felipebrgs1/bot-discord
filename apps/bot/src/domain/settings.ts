@@ -34,6 +34,15 @@ export interface DashboardConfig {
 	web_user_id: string;
 }
 
+/** Cutucao de canal parado (ver idle-nudge.ts). */
+export interface NudgeConfig {
+	enabled: boolean;
+	idle_min: number;
+	quiet_start_hour: number;
+	quiet_end_hour: number;
+	time_zone: string;
+}
+
 export interface BotSettings {
 	discord: DiscordConfig;
 	chat: ChatConfig;
@@ -41,6 +50,7 @@ export interface BotSettings {
 	memory: MemoryConfig;
 	judge: JudgeConfig;
 	dashboard: DashboardConfig;
+	nudge: NudgeConfig;
 }
 
 export interface SettingEntry {
@@ -69,6 +79,7 @@ const DEFAULTS: BotSettings = {
 	},
 	judge: { enabled: false, threshold: 0.3, timeout_ms: 4000 },
 	dashboard: { web_user_id: "" },
+	nudge: { enabled: true, idle_min: 30, quiet_start_hour: 0, quiet_end_hour: 9, time_zone: "America/Sao_Paulo" },
 };
 
 /** Padroes em codigo: um banco zerado ja funciona. Copia nova a cada chamada. */

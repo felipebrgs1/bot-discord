@@ -9,6 +9,8 @@ function setup() {
 	souls.ensureSeed("padrão");
 	souls.save("serio", "sério");
 	const forgotten: string[] = [];
+	const nudged: string[] = [];
+	let nudgeFails = false;
 	const sessions: ChatSessions = { conversations: () => [], forget: (c) => void forgotten.push(c) };
 	const commands = new TextCommands({
 		games: new SearchGames({
@@ -22,9 +24,13 @@ function setup() {
 		souls,
 		sessions,
 		adminIds: () => ["dono"],
+		nudge: async (channelId) => {
+			if (nudgeFails) throw new Error("modelo caiu");
+			nudged.push(channelId);
+		},
 	});
 	const run = (text: string, authorId = "dono") => commands.handle({ channelId: "c1", authorId, text });
-	return { souls, forgotten, run };
+	return { souls, forgotten, nudged, run, failNudge: () => void (nudgeFails = true) };
 }
 
 describe("TextCommands", () => {
@@ -63,5 +69,23 @@ describe("TextCommands", () => {
 		const { run, forgotten } = setup();
 		expect(await run("!soul fantasma")).toBe("não rolou: soul desconhecida: fantasma");
 		expect(forgotten).toEqual([]);
+	});
+
+	it("!cutucar do dono puxa assunto no canal e nao responde nada ao comando", async () => {
+		const { nudged, run } = setup();
+		expect(await run("!cutucar")).toBe("");
+		expect(nudged).toEqual(["c1"]);
+	});
+
+	it("!cutucar de quem nao e dono e recusado", async () => {
+		const { nudged, run } = setup();
+		expect(await run("!cutucar", "u1")).toBe("só o dono cutuca o canal.");
+		expect(nudged).toEqual([]);
+	});
+
+	it("!cutucar que falha responde o motivo", async () => {
+		const { run, failNudge } = setup();
+		failNudge();
+		expect(await run("!cutucar")).toBe("não rolou: modelo caiu");
 	});
 });

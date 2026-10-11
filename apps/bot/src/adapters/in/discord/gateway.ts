@@ -299,6 +299,13 @@ export class DiscordGateway {
 		}
 	}
 
+	/** Manda texto num canal sem mensagem de origem (cutucao). */
+	async say(channelId: string, chunks: readonly string[]): Promise<void> {
+		const channel = await this.client.channels.fetch(channelId);
+		if (!channel?.isSendable()) throw new Error(`canal ${channelId} não aceita mensagem`);
+		for (const chunk of chunks) await channel.send(chunk);
+	}
+
 	private async onMessage(message: Message): Promise<void> {
 		const { config, logger, history, commands, replies, images } = this.deps;
 		const eligible = isEligibleChannel(message, config.all());
@@ -324,7 +331,7 @@ export class DiscordGateway {
 			try {
 				const answer = await commands.handle({ channelId: m.channelId, authorId: m.author.id, text: m.content });
 				if (answer !== null) {
-					await m.reply(answer);
+					if (answer) await m.reply(answer);
 					return;
 				}
 			} catch (err) {

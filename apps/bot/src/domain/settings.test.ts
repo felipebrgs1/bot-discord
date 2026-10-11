@@ -12,6 +12,16 @@ describe("defaultSettings", () => {
 		expect(s.dashboard.web_user_id).toBe("");
 	});
 
+	it("cutucao de canal parado vem ligado: 30 min, silencio 00h-09h em Sao Paulo", () => {
+		expect(defaultSettings().nudge).toEqual({
+			enabled: true,
+			idle_min: 30,
+			quiet_start_hour: 0,
+			quiet_end_hour: 9,
+			time_zone: "America/Sao_Paulo",
+		});
+	});
+
 	it("devolve copia nova: mexer numa nao afeta a proxima", () => {
 		defaultSettings().discord.channel_ids.push("x");
 		expect(defaultSettings().discord.channel_ids).toEqual([]);

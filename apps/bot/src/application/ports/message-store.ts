@@ -10,4 +10,6 @@ export interface MessageStore {
 	after(channelId: string, afterSeq: number, limit: number): StoredMessage[];
 	/** Ate `limit` mensagens mais novas depois da ultima fala de bot, antigas primeiro. */
 	sinceLastBotMessage(channelId: string, limit: number): StoredMessage[];
+	/** Ate `limit` mensagens mais novas do canal, antigas primeiro. */
+	latest(channelId: string, limit: number): StoredMessage[];
 }

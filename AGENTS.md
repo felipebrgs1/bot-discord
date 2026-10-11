@@ -93,15 +93,17 @@ Problema que resolve: com Discord, painel, tools do agente e agendador chamando 
 src/
   domain/          regras puras: settings, roles, trigger, cooldown, reply-split,
                    memory (validacao/prompt/familiaridade), soul, game, media-policy,
-                   html-text, http-url, image, media-quality, message, turn, swarm
+                   html-text, http-url, image, media-quality, message, turn, swarm,
+                   idle-nudge (cutucao de canal parado)
   application/
     ports/         interfaces das portas de saida + suites de contrato
     *.ts           casos de uso: ReplyToMessage, TextCommands, Persona, MessageLog,
                    ConsolidateMemory, Recall, WebResearch, SearchGames, DownloadMedia,
-                   DownloadImages, GenerateImage, ImagePromptWriter, OutboxDelivery, WebChat, Swarm, Panel
+                   DownloadImages, GenerateImage, ImagePromptWriter, OutboxDelivery, WebChat, Swarm, Panel,
+                   IdleNudge
   adapters/
     in/            discord (gateway, anexos, /lista, /baixar, /gerar, ReplyTarget), http-panel,
-                   pi-tools (tools do agente), scheduler (consolidacao)
+                   pi-tools (tools do agente), scheduler (consolidacao, cutucao)
     out/           sqlite, pi-agent, web (fetcher, guarda SSRF, busca Tavily/Firecrawl, Skidrow),
                    llm (extrator), codex (GPT Image pela assinatura),
                    openrouter (imagem do /gerar), ytdlp,

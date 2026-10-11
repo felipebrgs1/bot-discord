@@ -1,6 +1,7 @@
 /**
- * Comandos de texto no chat: !lista/lista (qualquer um) e !soul/!souls (so
- * admin). Devolve a resposta, ou null quando o texto nao e comando.
+ * Comandos de texto no chat: !lista/lista (qualquer um), !soul/!souls e
+ * !cutucar (so admin). Devolve a resposta ("" = nada a responder), ou null
+ * quando o texto nao e comando.
  */
 
 import { roleOf } from "../domain/roles.ts";
@@ -13,6 +14,8 @@ export interface TextCommandDeps {
 	souls: SoulStore;
 	sessions: ChatSessions;
 	adminIds: () => readonly string[];
+	/** Cutucao forcado no canal (IdleNudge.force). */
+	nudge: (channelId: string) => Promise<void>;
 }
 
 export interface CommandInput {
@@ -34,6 +37,7 @@ export class TextCommands {
 		const raw = input.text.trim();
 		const [cmd = "", arg = ""] = raw.split(/\s+/);
 		if (cmd === "!lista" || cmd === "/lista") return this.lista(raw.slice(cmd.length).trim());
+		if (cmd === "!cutucar") return this.cutucar(input);
 		if (cmd !== "!soul" && cmd !== "!souls") return null;
 		const { souls, sessions, adminIds } = this.deps;
 		if (roleOf(input.authorId, adminIds()) !== "admin") return "só o dono troca a mente do bot.";
@@ -48,6 +52,16 @@ export class TextCommands {
 		}
 		sessions.forget(input.channelId);
 		return `mente trocada: agora sou **${arg}** neste canal.`;
+	}
+
+	private async cutucar(input: CommandInput): Promise<string> {
+		if (roleOf(input.authorId, this.deps.adminIds()) !== "admin") return "só o dono cutuca o canal.";
+		try {
+			await this.deps.nudge(input.channelId);
+			return "";
+		} catch (err) {
+			return `não rolou: ${errorText(err)}`;
+		}
 	}
 
 	private async lista(jogo: string): Promise<string> {

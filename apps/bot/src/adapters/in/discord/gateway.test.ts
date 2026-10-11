@@ -103,7 +103,14 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 	const souls = new FakeSoulStore();
 	souls.ensureSeed("padrão");
 	const handlers: Record<string, (...args: unknown[]) => void> = {};
+	const channelSends: [string, string][] = [];
+	const nudged: string[] = [];
+	const sendable = (id: string) => ({
+		isSendable: () => id !== "voz",
+		send: async (text: string) => void channelSends.push([id, text]),
+	});
 	const client = {
+		channels: { fetch: async (id: string) => (id === "sumiu" ? null : sendable(id)) },
 		once: () => undefined,
 		on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
 		login: async () => undefined,
@@ -112,7 +119,13 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 	const gw = new DiscordGateway({
 		config,
 		replies,
-		commands: new TextCommands({ games, souls, sessions: { conversations: () => [], forget: () => undefined }, adminIds: () => ["dono"] }),
+		commands: new TextCommands({
+			games,
+			souls,
+			sessions: { conversations: () => [], forget: () => undefined },
+			adminIds: () => ["dono"],
+			nudge: async (channelId) => void nudged.push(channelId),
+		}),
 		games,
 		images: new DownloadImages(new FakePageFetcher(opts.routes ?? [PNG]), new FakeImageShrinker()),
 		media,
@@ -132,7 +145,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		await new Promise((r) => setTimeout(r, 10));
 		await replies.idle();
 	};
-	return { gw, clock, asked, turns, messages, outbox, downloads, prompts, receive, logger, handlers };
+	return { gw, clock, asked, turns, messages, outbox, downloads, prompts, receive, logger, handlers, channelSends, nudged };
 }
 
 function message(over: Record<string, unknown> = {}) {
@@ -292,6 +305,15 @@ describe("mensagem", () => {
 		const { m, events } = message({ ...mentioned, content: "!lista forza" });
 		await receive(m);
 		expect(events).toEqual(["reply 1. Forza Horizon 6-RUNE\nhttps://skidrow/fh6/\n2. Forza Horizon 5-P2P\nhttps://skidrow/fh5/"]);
+		expect(asked).toEqual([]);
+	});
+
+	it("comando sem resposta (!cutucar) nao responde nem chama o agente", async () => {
+		const { asked, nudged, receive } = setup();
+		const { m, events } = message({ ...mentioned, content: "!cutucar", author: { id: "dono", username: "dono", bot: false, system: false } });
+		await receive(m);
+		expect(nudged).toEqual(["c1"]);
+		expect(events).toEqual([]);
 		expect(asked).toEqual([]);
 	});
 
@@ -493,5 +515,23 @@ describe("erros do cliente Discord", () => {
 		handlers["interactionCreate"]?.(quebrada);
 		await new Promise((r) => setTimeout(r, 10));
 		expect(logger.lines).toContain("error interacao ERRO: quebrou");
+	});
+});
+
+describe("say", () => {
+	it("manda os pedacos no canal, em ordem", async () => {
+		const { gw, channelSends } = setup();
+		await gw.say("c1", ["um", "dois"]);
+		expect(channelSends).toEqual([
+			["c1", "um"],
+			["c1", "dois"],
+		]);
+	});
+
+	it("canal inexistente ou sem texto e erro", async () => {
+		const { gw, channelSends } = setup();
+		await expect(gw.say("sumiu", ["oi"])).rejects.toThrow("canal sumiu");
+		await expect(gw.say("voz", ["oi"])).rejects.toThrow("canal voz");
+		expect(channelSends).toEqual([]);
 	});
 });

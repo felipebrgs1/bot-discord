@@ -79,6 +79,16 @@ export function messageStoreContract(make: () => MessageStore): void {
 		for (const i of [1, 2, 3]) store.append(msg({ messageId: `m${i}`, body: `m${i}` }));
 		expect(store.sinceLastBotMessage("c1", 2).map((m) => m.body)).toEqual(["m2", "m3"]);
 	});
+
+	it("latest traz as mais novas do canal ate o limite, antigas primeiro", () => {
+		const store = make();
+		store.append(msg({ messageId: "m1", body: "a" }));
+		store.append(msg({ messageId: "m2", body: "b", authorId: "bot", fromBot: true }));
+		store.append(msg({ messageId: "m3", body: "x", channelId: "c2" }));
+		store.append(msg({ messageId: "m4", body: "c" }));
+		expect(store.latest("c1", 2).map((m) => m.body)).toEqual(["b", "c"]);
+		expect(store.latest("c1", 10).map((m) => m.body)).toEqual(["a", "b", "c"]);
+	});
 }
 
 export function historySearchContract(make: () => MessageStore & HistorySearch): void {
