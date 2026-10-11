@@ -58,11 +58,17 @@ describe("createApi: requisicoes", () => {
 	});
 
 	it("PUT manda JSON com o corpo do contrato", async () => {
-		const { api, calls } = setup(json({ changed: true }));
-		await api.correctMemory(7, "novo", "motivo");
-		expect(calls[0]?.url).toBe("/api/memories/7");
+		const { api, calls } = setup(json({ entries: ["novo"] }));
+		expect(await api.saveMemory("user", "u1", ["novo"], "motivo")).toEqual({ entries: ["novo"] });
+		expect(calls[0]?.url).toBe("/api/memories/user/u1");
 		expect(calls[0]?.init?.method).toBe("PUT");
-		expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ content: "novo", reason: "motivo" });
+		expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ entries: ["novo"], reason: "motivo" });
+	});
+
+	it("rotas de memoria codificam escopo e dono", async () => {
+		const { api, calls } = setup(json({ versions: [] }));
+		await api.memoryVersions("group", "a/b");
+		expect(calls[0]?.url).toBe("/api/memories/group/a%2Fb/versions");
 	});
 
 	it("codifica o id da sessao na rota", async () => {
@@ -73,7 +79,7 @@ describe("createApi: requisicoes", () => {
 
 	it("erro HTTP vira Error com a mensagem do servidor", async () => {
 		const { api } = setup(json({ error: "memória não encontrada" }, 404));
-		await expect(api.memoryVersions(9)).rejects.toThrow("memória não encontrada");
+		await expect(api.memoryVersions("user", "u9")).rejects.toThrow("memória não encontrada");
 	});
 
 	it("HTML no lugar de JSON explica que a rota nao existe no backend", async () => {

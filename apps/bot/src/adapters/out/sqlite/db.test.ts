@@ -11,7 +11,7 @@ function memDb(): DatabaseSync {
 describe("migrations", () => {
 	it("applies all migrations and reports the version", () => {
 		const db = memDb();
-		expect(schemaVersion(db)).toBe(7);
+		expect(schemaVersion(db)).toBe(8);
 		const tables = db
 			.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','trigger') ORDER BY name;")
 			.all() as { name: string }[];
@@ -20,10 +20,8 @@ describe("migrations", () => {
 			"config",
 			"messages",
 			"messages_fts",
-			"memories",
-			"memories_fts",
-			"memory_versions",
-			"episodes",
+			"memory_blocks",
+			"memory_block_versions",
 			"rolling_summaries",
 			"interaction_events",
 			"skill_runs",
@@ -49,7 +47,7 @@ describe("migrations", () => {
 	it("is idempotent", () => {
 		const db = memDb();
 		migrate(db);
-		expect(schemaVersion(db)).toBe(7);
+		expect(schemaVersion(db)).toBe(8);
 		db.close();
 	});
 
@@ -75,7 +73,7 @@ describe("v5 memory-version-ids", () => {
 		);
 		version.run("jogo", "user", "ana", "c1", "Terraria");
 		version.run("jogo", "user", "bruno", "c1", "LoL");
-		migrate(db);
+		migrate(db, 5);
 		const rows = db.prepare("SELECT content, memory_id FROM memory_versions ORDER BY rowid;").all();
 		expect(rows).toEqual([
 			{ content: "Terraria", memory_id: ana },
@@ -99,7 +97,7 @@ describe("v7 memory-curation", () => {
 		version.run(old, "jogo", "user", "ana", "c1", "Terraria");
 		version.run(recent, "jogo", "user", "ana", "c2", "Stardew");
 		db.prepare("INSERT INTO episodes (key, title, summary) VALUES ('saga', 'A saga', 'resumo');").run();
-		migrate(db);
+		migrate(db, 7);
 		expect(db.prepare("SELECT rowid, channel_id, content, seen_count FROM memories WHERE scope = 'user';").all()).toEqual([
 			{ rowid: recent, channel_id: "", content: "Stardew", seen_count: 1 },
 		]);
@@ -115,22 +113,27 @@ describe("v7 memory-curation", () => {
 	});
 });
 
-describe("memories_fts", () => {
-	it("finds inserted memories by keyword", () => {
-		const db = memDb();
-		db.prepare("INSERT INTO memories (key, kind, scope, person_id, channel_id, content) VALUES (?,?,?,?,?,?);").run(
-			"jogo-favorito",
-			"preference",
-			"user",
-			"u1",
-			"c1",
-			"Meu jogo favorito é Terraria",
-		);
-		const hits = db.prepare("SELECT content FROM memories_fts WHERE memories_fts MATCH ?;").all("Terraria") as {
-			content: string;
-		}[];
-		expect(hits).toHaveLength(1);
-		expect(hits[0]?.content).toContain("Terraria");
+describe("v8 memory-blocks", () => {
+	it("zera a memoria antiga e poe o cursor no fim do historico de cada canal", () => {
+		const db = new DatabaseSync(":memory:");
+		migrate(db, 7);
+		db.prepare("INSERT INTO memories (key, kind, scope, person_id, channel_id, content) VALUES ('a','fact','group','','c1','x');").run();
+		db.prepare("INSERT INTO episodes (channel_id, key, title, summary) VALUES ('c1','e','t','s');").run();
+		const msg = db.prepare("INSERT INTO messages (channel_id, author_id, message_id, body) VALUES (?,?,?,?);");
+		msg.run("c1", "u1", "m1", "oi");
+		msg.run("c2", "u1", "m2", "oi");
+		msg.run("c1", "u1", "m3", "oi");
+		db.prepare("INSERT INTO memory_cursors (channel_id, last_rowid) VALUES ('c1', 1);").run();
+		migrate(db);
+		const names = (db.prepare("SELECT name FROM sqlite_master;").all() as { name: string }[]).map((r) => r.name);
+		for (const gone of ["memories", "memories_fts", "memory_versions", "episodes", "episodes_fts"]) {
+			expect(names, gone).not.toContain(gone);
+		}
+		expect(db.prepare("SELECT channel_id, last_rowid FROM memory_cursors ORDER BY channel_id;").all()).toEqual([
+			{ channel_id: "c1", last_rowid: 3 },
+			{ channel_id: "c2", last_rowid: 2 },
+		]);
+		expect(db.prepare("SELECT COUNT(*) AS n FROM memory_blocks;").get()).toEqual({ n: 0 });
 		db.close();
 	});
 });

@@ -1,12 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { FakeMemoryStore } from "../test-support/fakes/memory-store.ts";
 import { FakeMessageStore } from "../test-support/fakes/message-store.ts";
 import { Recall } from "./recall.ts";
 
 function setup() {
 	const messages = new FakeMessageStore();
-	const memories = new FakeMemoryStore();
-	return { messages, memories, recall: new Recall(messages, memories) };
+	return { messages, recall: new Recall(messages) };
 }
 
 describe("Recall.searchHistory", () => {
@@ -32,29 +30,5 @@ describe("Recall.searchHistory", () => {
 
 	it("nada encontrado avisa", () => {
 		expect(setup().recall.searchHistory({ channelId: "c1", query: "zzz" })).toBe("(nada encontrado no histórico)");
-	});
-});
-
-describe("Recall.searchMemories", () => {
-	it("lista com escopo, pessoa, tipo e chave", () => {
-		const { memories, recall } = setup();
-		memories.commit(
-			"c1",
-			{
-				summary: "",
-				memories: [{ key: "jogo", kind: "preference", scope: "user", personId: "u1", content: "ama Terraria" }],
-				forget: [],
-				confirm: [],
-				episodes: [],
-			},
-			1,
-		);
-		expect(recall.searchMemories("c1", "Terraria")).toBe("• [user/u1] (preference) ama Terraria — chave jogo");
-	});
-
-	it("query vazia e erro; nada achado avisa", () => {
-		const { recall } = setup();
-		expect(recall.searchMemories("c1", "  ")).toBe("erro: query vazia");
-		expect(recall.searchMemories("c1", "Terraria")).toBe("(nada nas memórias sobre isso)");
 	});
 });

@@ -5,16 +5,19 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { AgentMemory } from "../../../application/agent-memory.ts";
 import type { DownloadMedia } from "../../../application/download-media.ts";
 import type { GenerateImage } from "../../../application/generate-image.ts";
 import type { Recall } from "../../../application/recall.ts";
 import type { SearchGames } from "../../../application/search-games.ts";
 import type { WebResearch } from "../../../application/web-research.ts";
+import type { MemoryBlockRef, MemoryEdit } from "../../../domain/memory.ts";
 
 export interface ToolServices {
 	research: WebResearch;
 	media: DownloadMedia;
 	recall: Recall;
+	memory: AgentMemory;
 	images: GenerateImage;
 	games: SearchGames;
 }
@@ -25,9 +28,38 @@ function textResult(text: string): { content: [{ type: "text"; text: string }]; 
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+interface MemoryParams {
+	action?: string;
+	target?: string;
+	person_id?: string;
+	old_text?: string;
+	content?: string;
+}
+
+/** Parametros da tool memory -> bloco + edicao; string = erro para o modelo. */
+function memoryRequest(channelId: string, p: MemoryParams): { ref: MemoryBlockRef; edit: MemoryEdit } | string {
+	let ref: MemoryBlockRef;
+	if (p.target === "group") ref = { scope: "group", ownerId: channelId };
+	else if (p.target === "user") {
+		const person = (p.person_id ?? "").trim();
+		if (!person) return "target user precisa de person_id";
+		ref = { scope: "user", ownerId: person };
+	} else return "target deve ser group ou user";
+	const content = p.content ?? "";
+	const oldText = p.old_text ?? "";
+	if (p.action === "add") return content.trim() ? { ref, edit: { action: "add", content } } : "add precisa de content";
+	if (p.action === "replace") {
+		return oldText.trim() && content.trim()
+			? { ref, edit: { action: "replace", oldText, content } }
+			: "replace precisa de old_text e content";
+	}
+	if (p.action === "remove") return oldText.trim() ? { ref, edit: { action: "remove", oldText } } : "remove precisa de old_text";
+	return "action deve ser add, replace ou remove";
+}
+
 /** Tools de toda conversa (user e admin); admin ganha as nativas do pi por fora. */
 export function botTools(services: ToolServices, channelId: string): ToolDefinition[] {
-	const { research, media, recall, images, games } = services;
+	const { research, media, recall, memory, images, games } = services;
 	return [
 		defineTool({
 			name: "web_search",
@@ -70,7 +102,7 @@ export function botTools(services: ToolServices, channelId: string): ToolDefinit
 			name: "search_history",
 			label: "Buscar histórico",
 			description:
-				'Procura no histórico de conversas do canal por texto, período e pessoas — a memória do que foi dito, incluindo o que não virou memória durável. Retorna trechos com autor e data mais o que estava em volta. Use para "lembra quando...", links, piadas ou fatos antigos.',
+				'Procura no histórico de conversas do canal por texto, período e pessoas — tudo o que foi dito, incluindo o que não está na sua memória. Retorna trechos com autor e data mais o que estava em volta. Use para "lembra quando...", links, piadas ou fatos antigos.',
 			parameters: Type.Object({
 				query: Type.Optional(Type.String({ description: "Texto (FTS em português)" })),
 				days: Type.Optional(Type.Number({ description: "Só dos últimos N dias" })),
@@ -88,19 +120,24 @@ export function botTools(services: ToolServices, channelId: string): ToolDefinit
 			},
 		}),
 		defineTool({
-			name: "memory_search",
-			label: "Buscar memórias",
+			name: "memory",
+			label: "Memória",
 			description:
-				"Busca nas memórias duráveis do grupo e das pessoas (fatos, preferências, lições, piadas internas) e nas histórias do grupo (kind episode). Use quando a resposta precisar de algo aprendido antes que não está na conversa atual.",
+				"Escreve na sua memória durável, que entra inteira em toda conversa: o bloco do grupo (target group) ou o de uma pessoa (target user + person_id, o id que vem em [mensagem de ...]). Salve correção feita a você, preferência que vale para sempre e fato durável; nada de papo do dia. add cria uma entrada; replace troca a entrada que contém old_text; remove apaga a que contém old_text. O bloco tem teto: se der memória cheia, junte entradas (replace) ou apague a de menor valor (remove) e tente de novo.",
 			parameters: Type.Object({
-				query: Type.String({ description: "O que procurar" }),
-				limit: Type.Optional(Type.Number({ description: "Máximo (padrão 5, máx 8)" })),
+				action: Type.String({ description: "add, replace ou remove" }),
+				target: Type.String({ description: "group (memória do grupo) ou user (memória de uma pessoa)" }),
+				person_id: Type.Optional(Type.String({ description: "Id do Discord da pessoa (só em target user)" })),
+				old_text: Type.Optional(Type.String({ description: "Trecho único da entrada a trocar ou apagar (replace/remove)" })),
+				content: Type.Optional(Type.String({ description: "Frase curta e autocontida (add/replace)" })),
 			}),
 			async execute(_id, p) {
+				const request = memoryRequest(channelId, p);
+				if (typeof request === "string") return textResult(`erro: ${request}`);
 				try {
-					return textResult(recall.searchMemories(channelId, p.query ?? "", p.limit));
+					return textResult(memory.forTool(request.ref, request.edit));
 				} catch (err) {
-					return textResult(`erro na busca: ${errorText(err)}`);
+					return textResult(`erro ao salvar: ${errorText(err)}`);
 				}
 			},
 		}),

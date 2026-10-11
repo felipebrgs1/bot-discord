@@ -103,47 +103,42 @@ export interface LogPage {
 // --- memoria (/api/memories, /api/learnings) ---
 
 export type MemoryScope = "group" | "user";
-export type MemoryStatus = "active" | "suppressed";
 
-export interface MemoryItem {
-	id: number;
-	channel_id: string;
+/** Bloco de memoria: grupo (owner_id = canal) ou pessoa (owner_id = id do Discord). */
+export interface MemoryBlock {
 	scope: MemoryScope;
-	user_id?: string;
-	key: string;
-	kind: string;
-	status: MemoryStatus;
-	content: string;
-	version: number;
+	owner_id: string;
+	name: string;
+	entries: string[];
+	/** Caracteres usados (entradas + quebras) e o teto do escopo. */
+	size: number;
+	limit: number;
 	updated_at: string;
 }
 
-export interface MemoryList {
-	items: MemoryItem[];
+export interface MemoryBlockList {
+	blocks: MemoryBlock[];
 }
 
-export interface MemoryVersion {
+export interface MemoryBlockVersion {
 	version: number;
-	kind: string;
-	status: MemoryStatus;
-	content: string;
+	entries: string[];
 	reason: string;
 	created_at: string;
 }
 
-export interface MemoryVersionList {
-	versions: MemoryVersion[];
+export interface MemoryBlockVersionList {
+	versions: MemoryBlockVersion[];
 }
 
-export type MemoryAction = "forget" | "restore";
-
-export interface MemoryActionRequest {
+/** PUT /api/memories/:scope/:owner_id: troca o bloco inteiro (400 se passar do teto). */
+export interface MemoryBlockUpdate {
+	entries: string[];
 	reason?: string;
 }
 
-export interface MemoryCorrection {
-	content: string;
-	reason?: string;
+export interface MemoryBlockSaved {
+	entries: string[];
 }
 
 export interface Changed {

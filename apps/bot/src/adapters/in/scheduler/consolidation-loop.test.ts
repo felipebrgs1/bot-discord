@@ -1,14 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import type { ConsolidateMemory } from "../../../application/consolidate-memory.ts";
+import type { ReviewMemory } from "../../../application/review-memory.ts";
 import { startConsolidationLoop } from "./consolidation-loop.ts";
 
-function fakeConsolidate(onCall: (channels: readonly string[]) => Promise<void>): ConsolidateMemory {
+function fakeConsolidate(onCall: (channels: readonly string[]) => Promise<void>): ReviewMemory {
 	return {
 		all: async (channels: readonly string[]) => {
 			await onCall(channels);
-			return { channels: 0, memories: 0 };
+			return { channels: 0, edits: 0 };
 		},
-	} as unknown as ConsolidateMemory;
+	} as unknown as ReviewMemory;
 }
 
 describe("startConsolidationLoop", () => {

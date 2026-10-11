@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { AgentMemory } from "../../../application/agent-memory.ts";
 import { Panel } from "../../../application/panel.ts";
 import { Persona } from "../../../application/persona.ts";
 import type { ChatAgent, ChatSessions } from "../../../application/ports/chat-agent.ts";
@@ -39,7 +40,7 @@ function setup(password = "", config = new FakeConfigStore()) {
 	};
 	let n = 0;
 	const handler = createPanelHandler({
-		panel: new Panel({ config, souls, sessions: agent, memories, metrics, logs: { after: () => ({ entries: [], cursor: 0 }) }, agentModel: "" }),
+		panel: new Panel({ config, souls, sessions: agent, memories, memory: new AgentMemory(memories), metrics, logs: { after: () => ({ entries: [], cursor: 0 }) }, agentModel: "" }),
 		chat: new WebChat({
 			messages,
 			agent,
@@ -119,7 +120,7 @@ function frames(r: Resp): { event: string; data: unknown }[] {
 }
 
 describe("envelopes (contrato do front)", () => {
-	it("memories {items}, learnings {events}, logs {entries,next}, meta, metrics", async () => {
+	it("memories {blocks}, learnings {events}, logs {entries,next}, meta, metrics", async () => {
 		const { handler, metrics } = setup();
 		metrics.record({
 			operation: "chat",
@@ -134,7 +135,7 @@ describe("envelopes (contrato do front)", () => {
 			cacheWriteTokens: 0,
 			cost: 0,
 		});
-		expect(Array.isArray((j(await request(handler, "GET", "/api/memories")) as { items: unknown[] }).items)).toBe(true);
+		expect(Array.isArray((j(await request(handler, "GET", "/api/memories")) as { blocks: unknown[] }).blocks)).toBe(true);
 		expect(Array.isArray((j(await request(handler, "GET", "/api/learnings")) as { events: unknown[] }).events)).toBe(true);
 		expect(j(await request(handler, "GET", "/api/logs"))).toEqual({ entries: [], next: 0 });
 		expect(j(await request(handler, "GET", "/api/meta"))).toEqual({ chat: true, agent: true, model: "(padrão do pi)", role: "user" });
@@ -226,43 +227,39 @@ describe("chat web", () => {
 });
 
 describe("memorias", () => {
-	it("lista, versoes, forget/restore e correct", async () => {
+	it("lista os blocos, salva o bloco inteiro e mostra as versoes", async () => {
 		const { handler, memories } = setup();
-		memories.commit("c1", { summary: "", memories: [{ key: "jogo", kind: "preference", scope: "user", personId: "u1", content: "Terraria" }], forget: [], confirm: [], episodes: [] }, 1);
-		const id = memories.listActive(1)[0]?.id ?? 0;
-		const list = j(await request(handler, "GET", "/api/memories")) as { items: Record<string, unknown>[] };
-		expect(list.items[0]).toEqual({
-			id,
-			channel_id: "",
-			scope: "user",
-			user_id: "u1",
-			key: "jogo",
-			kind: "preference",
-			status: "active",
-			content: "Terraria",
-			version: 1,
-			updated_at: expect.any(String),
-		});
+		memories.write({ scope: "user", ownerId: "u1" }, ["joga Terraria"], "revisão: add");
+		const list = j(await request(handler, "GET", "/api/memories")) as { blocks: Record<string, unknown>[] };
+		expect(list.blocks).toEqual([
+			{
+				scope: "user",
+				owner_id: "u1",
+				name: "u1",
+				entries: ["joga Terraria"],
+				size: 13,
+				limit: 1375,
+				updated_at: expect.any(String),
+			},
+		]);
 
-		expect(j(await request(handler, "POST", `/api/memories/${id}/forget`, { body: { reason: "teste" } }))).toEqual({ changed: true });
-		expect((j(await request(handler, "GET", "/api/memories")) as { items: unknown[] }).items).toEqual([]);
-		const versions = j(await request(handler, "GET", `/api/memories/${id}/versions`)) as { versions: { reason: string; kind: string }[] };
-		expect(versions.versions.map((v) => v.reason)).toEqual(["consolidação", "teste"]);
-		expect(Object.keys(versions.versions[0] ?? {}).sort()).toEqual(["content", "created_at", "kind", "reason", "status", "version"]);
-		expect(versions.versions[0]?.kind).toBe("preference");
-
-		await request(handler, "POST", `/api/memories/${id}/restore`, { body: {} });
-		expect(j(await request(handler, "PUT", `/api/memories/${id}`, { body: { content: "Stardew Valley", reason: "mudou" } }))).toEqual({ changed: true });
-		const after = j(await request(handler, "GET", "/api/memories")) as { items: { content: string; version: number }[] };
-		expect(after.items[0]).toMatchObject({ content: "Stardew Valley", version: 4 });
+		const saved = await request(handler, "PUT", "/api/memories/user/u1", { body: { entries: ["joga Stardew"], reason: "mudou" } });
+		expect(j(saved)).toEqual({ entries: ["joga Stardew"] });
+		const versions = j(await request(handler, "GET", "/api/memories/user/u1/versions")) as { versions: Record<string, unknown>[] };
+		expect(versions.versions.map((v) => [v["entries"], v["reason"]])).toEqual([
+			[["joga Terraria"], "revisão: add"],
+			[["joga Stardew"], "mudou"],
+		]);
+		expect(Object.keys(versions.versions[0] ?? {}).sort()).toEqual(["created_at", "entries", "reason", "version"]);
 	});
 
-	it("404 em memoria inexistente; PUT vazio e 400", async () => {
+	it("acima do teto e 400 com o motivo; escopo invalido e 404", async () => {
 		const { handler } = setup();
-		expect((await request(handler, "GET", "/api/memories/999/versions")).status).toBe(404);
-		expect((await request(handler, "PUT", "/api/memories/999", { body: { content: "x" } })).status).toBe(404);
-		expect((await request(handler, "POST", "/api/memories/999/forget", { body: {} })).status).toBe(404);
-		expect((await request(handler, "PUT", "/api/memories/1", { body: { content: "  " } })).status).toBe(400);
+		const big = await request(handler, "PUT", "/api/memories/user/u1", { body: { entries: ["a".repeat(2000)] } });
+		expect(big.status).toBe(400);
+		expect(big.body).toContain("memória cheia");
+		expect((await request(handler, "PUT", "/api/memories/outro/u1", { body: { entries: [] } })).status).toBe(404);
+		expect((await request(handler, "GET", "/api/memories/outro/u1/versions")).status).toBe(404);
 	});
 });
 

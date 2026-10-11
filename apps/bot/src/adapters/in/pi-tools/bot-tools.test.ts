@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { AgentMemory } from "../../../application/agent-memory.ts";
 import { DownloadMedia } from "../../../application/download-media.ts";
 import { GenerateImage } from "../../../application/generate-image.ts";
 import type { MediaResult } from "../../../application/ports/media-downloader.ts";
@@ -37,7 +38,8 @@ function setup() {
 				{ assertPublic: async () => undefined },
 				new FakeLogger(),
 			),
-			recall: new Recall(messages, memories),
+			recall: new Recall(messages),
+			memory: new AgentMemory(memories),
 			images: new GenerateImage(
 				{
 					generate: async (prompt) => {
@@ -83,7 +85,7 @@ describe("botTools", () => {
 			"download_media",
 			"generate_image",
 			"search_history",
-			"memory_search",
+			"memory",
 			"lista",
 			"magnet",
 		]);
@@ -110,14 +112,34 @@ describe("botTools", () => {
 		expect(await outbox.pending("c1")).toEqual(["/outbox/c1/imagem-7.png"]);
 	});
 
-	it("search_history e memory_search consultam o canal da conversa", async () => {
-		const { run, messages, memories } = setup();
+	it("search_history consulta o canal da conversa", async () => {
+		const { run, messages } = setup();
 		messages.append({ channelId: "c1", authorId: "u1", authorName: "ana", messageId: "m1", body: "Terraria hoje" });
 		messages.append({ channelId: "c2", authorId: "u1", authorName: "ana", messageId: "m2", body: "Terraria la" });
-		memories.commit("c1", { summary: "", memories: [{ key: "k", kind: "fact", scope: "group", personId: "", content: "ama Terraria" }], forget: [], confirm: [], episodes: [] }, 1);
 		expect(await run("search_history", { query: "Terraria", author_id: "u1" })).toContain("Terraria hoje");
 		expect(await run("search_history", { query: "Terraria" })).not.toContain("Terraria la");
-		expect(await run("memory_search", { query: "Terraria" })).toContain("ama Terraria");
+	});
+
+	it("memory escreve no bloco do grupo do canal da conversa ou no da pessoa", async () => {
+		const { run, memories } = setup();
+		expect(await run("memory", { action: "add", target: "group", content: "sextou é sagrado" })).toStartWith("ok.");
+		expect(await run("memory", { action: "add", target: "user", person_id: "u1", content: "joga LoL" })).toStartWith("ok.");
+		expect(await run("memory", { action: "replace", target: "user", person_id: "u1", old_text: "LoL", content: "largou o LoL" })).toContain(
+			"- largou o LoL",
+		);
+		expect(memories.read({ scope: "group", ownerId: "c1" })).toEqual(["sextou é sagrado"]);
+		expect(memories.read({ scope: "user", ownerId: "u1" })).toEqual(["largou o LoL"]);
+		expect(await run("memory", { action: "remove", target: "group", old_text: "sextou" })).toStartWith("ok.");
+		expect(memories.read({ scope: "group", ownerId: "c1" })).toEqual([]);
+	});
+
+	it("memory com parametro faltando ou invalido explica o erro", async () => {
+		const { run } = setup();
+		expect(await run("memory", { action: "add", target: "user", content: "x" })).toBe("erro: target user precisa de person_id");
+		expect(await run("memory", { action: "apagar", target: "group" })).toBe("erro: action deve ser add, replace ou remove");
+		expect(await run("memory", { action: "add", target: "canal", content: "x" })).toBe("erro: target deve ser group ou user");
+		expect(await run("memory", { action: "replace", target: "group", content: "x" })).toBe("erro: replace precisa de old_text e content");
+		expect(await run("memory", { action: "remove", target: "group" })).toBe("erro: remove precisa de old_text");
 	});
 
 	it("falha no banco vira erro de busca", async () => {

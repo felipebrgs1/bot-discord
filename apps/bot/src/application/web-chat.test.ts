@@ -72,7 +72,7 @@ describe("WebChat.send", () => {
 			text: "[mensagem de painel (id dono)]\noi",
 			images: [],
 			source: "web",
-			systemPrompt: "sou o bot",
+			systemPrompt: expect.stringMatching(/^sou o bot\n\n\[como usar sua memória\]/),
 		});
 		expect(messages.messages.map((m) => [m.authorId, m.authorName, m.createdAt])).toEqual([
 			["web", "você", "2026-09-27T12:00:00.000Z"],

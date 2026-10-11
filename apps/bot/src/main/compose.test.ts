@@ -132,7 +132,7 @@ describe("compose", () => {
 			"download_media",
 			"generate_image",
 			"search_history",
-			"memory_search",
+			"memory",
 			"lista",
 			"magnet",
 		]);

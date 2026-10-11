@@ -1,7 +1,6 @@
-/** O que o agente consulta sozinho: historico do canal e memorias duraveis (texto p/ o modelo). */
+/** O que o agente consulta sozinho: historico do canal (texto p/ o modelo). */
 
 import type { HistorySearch } from "./ports/history-search.ts";
-import type { MemoryStore } from "./ports/memory-store.ts";
 
 export interface HistoryRequest {
 	channelId: string;
@@ -15,11 +14,9 @@ const clamp = (value: number | undefined, fallback: number, max: number) => Math
 
 export class Recall {
 	private readonly history: HistorySearch;
-	private readonly memories: MemoryStore;
 
-	constructor(history: HistorySearch, memories: MemoryStore) {
+	constructor(history: HistorySearch) {
 		this.history = history;
-		this.memories = memories;
 	}
 
 	searchHistory(request: HistoryRequest): string {
@@ -38,15 +35,5 @@ export class Recall {
 				return `• ${h.authorName} (${when}): ${h.body.slice(0, 500)}${context ? `\n${context}` : ""}`;
 			})
 			.join("\n\n");
-	}
-
-	searchMemories(channelId: string, query: string, limit?: number): string {
-		const text = query.trim();
-		if (!text) return "erro: query vazia";
-		const hits = this.memories.search(channelId, text, clamp(limit, 5, 8));
-		if (hits.length === 0) return "(nada nas memórias sobre isso)";
-		return hits
-			.map((h) => `• [${h.scope}${h.personId ? `/${h.personId}` : ""}] (${h.kind}) ${h.content} — chave ${h.key}`)
-			.join("\n");
 	}
 }

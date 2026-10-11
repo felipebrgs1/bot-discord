@@ -1,21 +1,17 @@
-import type { MemoryStatus } from "../../domain/memory.ts";
+import type { MemoryScope } from "../../domain/memory.ts";
 
-export interface MemoryRecord {
-	id: number;
-	channelId: string;
-	scope: string;
-	personId: string;
-	key: string;
-	kind: string;
-	status: string;
-	content: string;
-	versions: number;
+export interface MemoryBlockRecord {
+	scope: MemoryScope;
+	ownerId: string;
+	/** Nome de exibicao (pessoa: ultimo nome visto no historico; grupo: o canal). */
+	name: string;
+	entries: string[];
 	updatedAt: string;
 }
 
-export interface MemoryVersion {
+export interface MemoryBlockVersion {
 	id: number;
-	content: string;
+	entries: string[];
 	reason: string;
 	createdAt: string;
 }
@@ -28,16 +24,12 @@ export interface LearningEvent {
 	detail: string;
 }
 
-/** Curadoria das memorias pelo painel. */
+/** Leitura da memoria pelo painel (a escrita passa pela MemoryStore). */
 export interface MemoryAdmin {
-	/** Ativas, mais novas primeiro. */
-	listActive(limit: number): MemoryRecord[];
-	find(id: number): MemoryRecord | undefined;
-	versions(id: number): MemoryVersion[];
-	/** false se a memoria nao existe. Registra versao com o motivo. */
-	setStatus(id: number, status: MemoryStatus, reason: string): boolean;
-	/** Troca o conteudo e reativa. false se nao existe. */
-	correct(id: number, content: string, reason: string): boolean;
-	/** Versoes de memoria e usos de skill, mais novos primeiro. */
+	/** Blocos ja escritos, grupo antes de pessoa, mais novos primeiro. */
+	blocks(): MemoryBlockRecord[];
+	/** Versoes do bloco, mais antigas primeiro. */
+	versions(scope: MemoryScope, ownerId: string): MemoryBlockVersion[];
+	/** Escritas de memoria e usos de skill, mais novos primeiro. */
 	timeline(limit: number): LearningEvent[];
 }

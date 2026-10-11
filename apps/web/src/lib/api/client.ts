@@ -142,12 +142,11 @@ export function createApi({ fetch, onUnauthorized }: ApiOptions) {
 
 		logs: (after: number, limit = 300) => request<Api.LogPage>(`/api/logs?after=${after}&limit=${limit}`),
 
-		memories: (limit = 200) => request<Api.MemoryList>(`/api/memories?limit=${limit}`),
-		memoryVersions: (id: number) => request<Api.MemoryVersionList>(`/api/memories/${id}/versions`),
-		memoryAction: (id: number, action: Api.MemoryAction, reason: string) =>
-			request<Api.Changed>(`/api/memories/${id}/${action}`, post({ reason } satisfies Api.MemoryActionRequest)),
-		correctMemory: (id: number, content: string, reason: string) =>
-			request<Api.Changed>(`/api/memories/${id}`, put({ content, reason } satisfies Api.MemoryCorrection)),
+		memories: () => request<Api.MemoryBlockList>("/api/memories"),
+		memoryVersions: (scope: Api.MemoryScope, ownerId: string) =>
+			request<Api.MemoryBlockVersionList>(`/api/memories/${scope}/${seg(ownerId)}/versions`),
+		saveMemory: (scope: Api.MemoryScope, ownerId: string, entries: string[], reason: string) =>
+			request<Api.MemoryBlockSaved>(`/api/memories/${scope}/${seg(ownerId)}`, put({ entries, reason } satisfies Api.MemoryBlockUpdate)),
 		learnings: (limit = 80) => request<Api.LearningList>(`/api/learnings?limit=${limit}`),
 
 		metrics: () => request<Api.MetricsSnapshot>("/api/metrics"),

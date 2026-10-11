@@ -1,13 +1,13 @@
-/** Dispara a consolidacao de memoria a cada intervalo (um tick por vez). */
+/** Dispara a revisao de memoria a cada intervalo (um tick por vez). */
 
-import type { ConsolidateMemory, ConsolidateOptions } from "../../../application/consolidate-memory.ts";
+import type { ReviewMemory, ReviewOptions } from "../../../application/review-memory.ts";
 
-export interface LoopOptions extends ConsolidateOptions {
+export interface LoopOptions extends ReviewOptions {
 	channels: () => readonly string[];
 	intervalMs: number;
 }
 
-export function startConsolidationLoop(consolidate: ConsolidateMemory, opts: LoopOptions): () => void {
+export function startConsolidationLoop(review: ReviewMemory, opts: LoopOptions): () => void {
 	let stopped = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const schedule = () => {
@@ -17,7 +17,7 @@ export function startConsolidationLoop(consolidate: ConsolidateMemory, opts: Loo
 	};
 	const tick = async (): Promise<void> => {
 		try {
-			await consolidate.all(opts.channels(), opts);
+			await review.all(opts.channels(), opts);
 		} catch {
 			/* proximo tick tenta de novo */
 		} finally {

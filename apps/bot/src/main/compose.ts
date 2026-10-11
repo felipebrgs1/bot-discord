@@ -33,7 +33,7 @@ import { HttpPageFetcher } from "../adapters/out/web/http-fetcher.ts";
 import { SkidrowCatalog } from "../adapters/out/web/skidrow-catalog.ts";
 import { TavilySearch } from "../adapters/out/web/tavily-search.ts";
 import { YtDlpDownloader } from "../adapters/out/ytdlp/ytdlp-downloader.ts";
-import { ConsolidateMemory } from "../application/consolidate-memory.ts";
+import { AgentMemory } from "../application/agent-memory.ts";
 import { DownloadImages } from "../application/download-images.ts";
 import { DownloadMedia } from "../application/download-media.ts";
 import { GenerateImage } from "../application/generate-image.ts";
@@ -46,6 +46,7 @@ import { Persona } from "../application/persona.ts";
 import type { WebSearch } from "../application/ports/web-search.ts";
 import { Recall } from "../application/recall.ts";
 import { ReplyToMessage } from "../application/reply-to-message.ts";
+import { ReviewMemory } from "../application/review-memory.ts";
 import { SearchGames } from "../application/search-games.ts";
 import { Swarm } from "../application/swarm.ts";
 import { parseModelRef } from "../domain/model-ref.ts";
@@ -124,6 +125,7 @@ export function compose(opts: ComposeOptions) {
 
 	// Casos de uso
 	const persona = new Persona(souls, memories, messages);
+	const memory = new AgentMemory(memories);
 	const games = new SearchGames(new SkidrowCatalog(fetcher));
 	// Imagem (conversa e /gerar): OpenRouter.
 	const imageGenerator = new OpenRouterImageGenerator({
@@ -134,7 +136,8 @@ export function compose(opts: ComposeOptions) {
 	const tools = {
 		research: new WebResearch(new WebSearchChain(searchers), fetcher),
 		media: new DownloadMedia(new YtDlpDownloader(env("YTDLP_BIN") || DEFAULT_YTDLP, outbox), guard, log),
-		recall: new Recall(messages, memories),
+		recall: new Recall(messages),
+		memory,
 		images: new GenerateImage(imageGenerator, outbox, systemClock, log),
 		games,
 	};
@@ -167,7 +170,7 @@ export function compose(opts: ComposeOptions) {
 		systemPromptFor: (channelId) => persona.systemPromptFor(channelId),
 		turnText: (turn) => persona.turnText(turn),
 	});
-	const panel = new Panel({ config, souls, sessions: agent, memories, metrics, logs: log, agentModel: agentModelText });
+	const panel = new Panel({ config, souls, sessions: agent, memories, memory, metrics, logs: log, agentModel: agentModelText });
 	const webChat = new WebChat({
 		messages,
 		agent,
@@ -230,7 +233,7 @@ export function compose(opts: ComposeOptions) {
 			return undefined;
 		}
 		const extractor = new ChatJsonExtractor({ baseUrl: boot.chat.base_url, apiKey: chatKey, model: boot.chat.model });
-		return startConsolidationLoop(new ConsolidateMemory({ messages, memories, logger: log, extractor }), {
+		return startConsolidationLoop(new ReviewMemory({ messages, store: memories, memory, logger: log, extractor }), {
 			channels: () => config.all().discord.channel_ids,
 			batchSize: boot.memory.batch_size,
 			intervalMs: boot.memory.interval_ms,

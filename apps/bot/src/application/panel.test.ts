@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import { MEMORY_LIMITS } from "../domain/memory.ts";
 import { DEFAULT_SOUL } from "../domain/soul.ts";
 import { FakeConfigStore } from "../test-support/fakes/config-store.ts";
 import { FakeMemoryStore } from "../test-support/fakes/memory-store.ts";
 import { FakeMetrics } from "../test-support/fakes/metrics.ts";
 import { FakeSoulStore } from "../test-support/fakes/soul-store.ts";
+import { AgentMemory } from "./agent-memory.ts";
 import { Panel } from "./panel.ts";
 import type { LogFeed } from "./ports/log-feed.ts";
 
@@ -24,11 +26,12 @@ function setup(agentModel = "") {
 		souls,
 		sessions: { conversations: () => ["c1", "web:s1"], forget: (c) => void forgotten.push(c) },
 		memories,
+		memory: new AgentMemory(memories),
 		metrics: new FakeMetrics(),
 		logs,
 		agentModel,
 	});
-	memories.commit("c1", { summary: "", memories: [{ key: "jogo", kind: "fact", scope: "group", personId: "", content: "Terraria" }], forget: [], confirm: [], episodes: [] }, 1);
+	memories.write({ scope: "group", ownerId: "c1" }, ["joga Terraria"], "revisão: add");
 	return { panel, config, souls, memories, forgotten, logCalls };
 }
 
@@ -63,40 +66,29 @@ describe("Panel.logs", () => {
 });
 
 describe("Panel: memorias", () => {
-	it("forget some da lista com motivo padrao; restore volta", () => {
-		const { panel } = setup();
-		const id = panel.memories()[0]?.id ?? 0;
-		expect(panel.forget(id)).toBe(true);
-		expect(panel.memories()).toEqual([]);
-		expect(panel.restore(id, "voltou")).toBe(true);
-		expect(panel.memoryVersions(id)?.versions.map((v) => v.reason)).toEqual(["consolidação", "esquecido pelo painel", "voltou"]);
+	it("lista os blocos com uso e teto do escopo", () => {
+		expect(setup().panel.memoryBlocks()).toEqual([
+			expect.objectContaining({ scope: "group", ownerId: "c1", entries: ["joga Terraria"], size: 13, limit: MEMORY_LIMITS.group }),
+		]);
 	});
 
-	it("restore sem motivo usa o padrao", () => {
+	it("salvar troca o bloco inteiro com motivo padrao e entra nas versoes", () => {
 		const { panel } = setup();
-		const id = panel.memories()[0]?.id ?? 0;
-		panel.restore(id);
-		expect(panel.memoryVersions(id)?.versions.at(-1)?.reason).toBe("restaurado pelo painel");
+		expect(panel.saveMemory("group", "c1", ["joga Stardew", ""])).toEqual({ ok: true, entries: ["joga Stardew"] });
+		expect(panel.memoryVersions("group", "c1").map((v) => [v.entries, v.reason])).toEqual([
+			[["joga Terraria"], "revisão: add"],
+			[["joga Stardew"], "editado pelo painel"],
+		]);
 	});
 
-	it("correct troca conteudo; vazio e erro; motivo padrao", () => {
+	it("salvar acima do teto e erro e nao muda nada", () => {
 		const { panel } = setup();
-		const id = panel.memories()[0]?.id ?? 0;
-		expect(() => panel.correct(id, "  ")).toThrow("conteúdo vazio");
-		expect(panel.correct(id, "Stardew")).toBe(true);
-		expect(panel.memories()[0]?.content).toBe("Stardew");
-		expect(panel.memoryVersions(id)?.versions.at(-1)?.reason).toBe("corrigido pelo painel");
-	});
-
-	it("memoria inexistente", () => {
-		const { panel } = setup();
-		expect(panel.memoryVersions(999)).toBeUndefined();
-		expect(panel.forget(999)).toBe(false);
-		expect(panel.correct(999, "x")).toBe(false);
+		expect(panel.saveMemory("user", "u1", ["a".repeat(MEMORY_LIMITS.user + 1)]).ok).toBe(false);
+		expect(panel.memoryVersions("user", "u1")).toEqual([]);
 	});
 
 	it("learnings traz a linha do tempo", () => {
-		expect(setup().panel.learnings().map((e) => e.subject)).toEqual(["jogo"]);
+		expect(setup().panel.learnings().map((e) => e.detail)).toEqual(["revisão: add"]);
 	});
 });
 

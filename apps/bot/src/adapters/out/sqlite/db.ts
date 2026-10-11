@@ -2,19 +2,16 @@
  * Conexao SQLite + migrations (append-only, versionadas).
  *
  * Single file via node:sqlite (no driver dep, no Docker, no pgvector).
- * Tables mirror the botdiscord (Go) vocabulary minus the vector parts:
- * memories keep a nullable `embedding` BLOB reserved for a future
- * sqlite-vec upgrade — no migration needed when that day comes.
  *
  * Conventions (same as the Go bot):
  * - append-only migrations, tracked in `schema_migrations`
  * - WAL mode so the consolidation worker can write while the gateway reads
- * - FTS5 (unicode61, good for PT-BR) for memory + history search
+ * - FTS5 (unicode61, good for PT-BR) for history search
  */
 
 import { DatabaseSync } from "node:sqlite";
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 interface Migration {
 	version: number;
@@ -313,6 +310,38 @@ CREATE TRIGGER episodes_fts_update AFTER UPDATE ON episodes BEGIN
   INSERT INTO episodes_fts(rowid, title, summary) VALUES (new.rowid, new.title, new.summary);
 END;
 INSERT INTO episodes_fts(episodes_fts) VALUES ('rebuild');
+`,
+	},
+	{
+		version: 8,
+		name: "memory-blocks",
+		sql: `
+-- Memoria em blocos com teto (modelo do Hermes). A memoria antiga e zerada,
+-- e o cursor da revisao vai para o fim do historico: nada e reprocessado.
+DROP TABLE memories_fts;
+DROP TABLE memories;
+DROP TABLE memory_versions;
+DROP TABLE episodes_fts;
+DROP TABLE episodes;
+-- scope: group (owner_id = canal) | user (owner_id = pessoa). entries: JSON de strings.
+CREATE TABLE memory_blocks (
+  scope TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  entries TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (scope, owner_id)
+);
+CREATE TABLE memory_block_versions (
+  rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  entries TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX memory_block_versions_owner ON memory_block_versions(scope, owner_id);
+DELETE FROM memory_cursors;
+INSERT INTO memory_cursors (channel_id, last_rowid) SELECT channel_id, MAX(rowid) FROM messages GROUP BY channel_id;
 `,
 	},
 ];

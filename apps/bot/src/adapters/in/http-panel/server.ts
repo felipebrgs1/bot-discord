@@ -11,7 +11,6 @@ import { join, normalize, sep } from "node:path";
 import type * as Api from "@elmatadore/api";
 import type { Panel } from "../../../application/panel.ts";
 import type { Logger } from "../../../application/ports/logger.ts";
-import type { MemoryRecord } from "../../../application/ports/memory-admin.ts";
 import type { MetricsTotals } from "../../../application/ports/metrics.ts";
 import { WebChat } from "../../../application/web-chat.ts";
 import type { StoredMessage } from "../../../domain/message.ts";
@@ -94,20 +93,7 @@ const chatMessage = (m: StoredMessage): Api.ChatMessage => ({
 	created_at: m.createdAt,
 });
 
-const memoryStatus = (status: string): Api.MemoryStatus => (status === "suppressed" ? "suppressed" : "active");
-
-const memoryItem = (r: MemoryRecord): Api.MemoryItem => ({
-	id: r.id,
-	channel_id: r.channelId,
-	scope: r.scope === "user" ? "user" : "group",
-	user_id: r.personId || undefined,
-	key: r.key,
-	kind: r.kind,
-	status: memoryStatus(r.status),
-	content: r.content,
-	version: r.versions,
-	updated_at: r.updatedAt,
-});
+const memoryScope = (v: string | undefined): Api.MemoryScope | undefined => (v === "group" || v === "user" ? v : undefined);
 
 const totals = (t: MetricsTotals): Api.MetricTotals => ({
 	requests: t.requests,
@@ -192,36 +178,33 @@ export function createPanelHandler(deps: PanelServerDeps): (req: IncomingMessage
 		}
 
 		if (path === "/api/memories" && method === "GET") {
-			return json<Api.MemoryList>(res, 200, { items: panel.memories(num("limit")).map(memoryItem) });
-		}
-		m = /^\/api\/memories\/(\d+)\/versions$/.exec(path);
-		if (m && method === "GET") {
-			const found = panel.memoryVersions(Number(m[1]));
-			if (!found) return fail(res, 404, "memória não encontrada");
-			const versions = found.versions.map((v) => ({
-				version: v.id,
-				kind: found.memory.kind,
-				status: memoryStatus(found.memory.status),
-				content: v.content,
-				reason: v.reason,
-				created_at: v.createdAt,
+			const blocks = panel.memoryBlocks().map((b) => ({
+				scope: b.scope,
+				owner_id: b.ownerId,
+				name: b.name,
+				entries: b.entries,
+				size: b.size,
+				limit: b.limit,
+				updated_at: b.updatedAt,
 			}));
-			return json<Api.MemoryVersionList>(res, 200, { versions });
+			return json<Api.MemoryBlockList>(res, 200, { blocks });
 		}
-		m = /^\/api\/memories\/(\d+)\/(forget|restore)$/.exec(path);
-		if (m && method === "POST") {
-			const reason = str((await readBody(req))["reason"]);
-			const changed = m[2] === "forget" ? panel.forget(Number(m[1]), reason) : panel.restore(Number(m[1]), reason);
-			return changed ? json<Api.Changed>(res, 200, { changed: true }) : fail(res, 404, "memória não encontrada");
+		m = /^\/api\/memories\/([^/]+)\/([^/]+)\/versions$/.exec(path);
+		if (m && method === "GET") {
+			const scope = memoryScope(m[1]);
+			if (!scope) return fail(res, 404, "escopo de memória desconhecido");
+			const versions = panel
+				.memoryVersions(scope, decodeURIComponent(m[2] ?? ""))
+				.map((v) => ({ version: v.id, entries: v.entries, reason: v.reason, created_at: v.createdAt }));
+			return json<Api.MemoryBlockVersionList>(res, 200, { versions });
 		}
-		m = /^\/api\/memories\/(\d+)$/.exec(path);
+		m = /^\/api\/memories\/([^/]+)\/([^/]+)$/.exec(path);
 		if (m && method === "PUT") {
+			const scope = memoryScope(m[1]);
+			if (!scope) return fail(res, 404, "escopo de memória desconhecido");
 			const body = await readBody(req);
-			const content = str(body["content"]) ?? "";
-			if (!content.trim()) return fail(res, 400, "conteúdo vazio");
-			return panel.correct(Number(m[1]), content, str(body["reason"]))
-				? json<Api.Changed>(res, 200, { changed: true })
-				: fail(res, 404, "memória não encontrada");
+			const result = panel.saveMemory(scope, decodeURIComponent(m[2] ?? ""), strArr(body["entries"]), str(body["reason"]));
+			return result.ok ? json<Api.MemoryBlockSaved>(res, 200, { entries: result.entries }) : fail(res, 400, result.error);
 		}
 
 		if (path === "/api/learnings" && method === "GET") {

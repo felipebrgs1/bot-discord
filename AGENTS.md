@@ -92,18 +92,18 @@ Problema que resolve: com Discord, painel, tools do agente e agendador chamando 
 ```
 src/
   domain/          regras puras: settings, roles, trigger, cooldown, reply-split,
-                   memory (validacao/prompt/familiaridade), soul, game, media-policy,
+                   memory (blocos com teto, edicao, revisao, turno), soul, game, media-policy,
                    html-text, http-url, image, media-quality, message, turn, swarm,
                    idle-nudge (cutucao de canal parado)
   application/
     ports/         interfaces das portas de saida + suites de contrato
     *.ts           casos de uso: ReplyToMessage, TextCommands, Persona, MessageLog,
-                   ConsolidateMemory, Recall, WebResearch, SearchGames, DownloadMedia,
+                   AgentMemory, ReviewMemory, Recall, WebResearch, SearchGames, DownloadMedia,
                    DownloadImages, GenerateImage, ImagePromptWriter, OutboxDelivery, WebChat, Swarm, Panel,
                    IdleNudge
   adapters/
     in/            discord (gateway, anexos, /lista, /baixar, /gerar, ReplyTarget), http-panel,
-                   pi-tools (tools do agente), scheduler (consolidacao, cutucao)
+                   pi-tools (tools do agente), scheduler (revisao de memoria, cutucao)
     out/           sqlite, pi-agent, web (fetcher, guarda SSRF, busca Tavily/Firecrawl, Skidrow),
                    llm (extrator), codex (GPT Image pela assinatura),
                    openrouter (imagem do /gerar), ytdlp,
@@ -133,7 +133,7 @@ main -> adapters -> application -> domain
 
 - **Porta de entrada:** o caso de uso em si (classe em `application/`). Adapters de entrada so traduzem e chamam.
 - **Porta de saida:** interface em `application/ports/`, nomeada pela capacidade, nao pela tecnologia: `MemoryStore`, nao `SqliteMemory`.
-- Uma porta por capacidade, pequena. Leitura do painel e escrita da consolidacao sao portas separadas (`MemoryAdmin`, `MemoryStore`), mesmo com um adapter implementando as duas.
+- Uma porta por capacidade, pequena. Leitura do painel e escrita da memoria sao portas separadas (`MemoryAdmin`, `MemoryStore`), mesmo com um adapter implementando as duas.
 - O pi e um adapter como outro qualquer: `adapters/out/pi-agent` implementa `ChatAgent`, `ChatSessions` e `SubAgents` (sessoes efemeras do `/swarm`); `adapters/in/pi-tools` expoe casos de uso como tools do agente (`defineTool`).
 
 Portas de saida: `ChatAgent`, `ChatSessions`, `Clock`, `ConfigStore`, `GameCatalog`, `HistorySearch`, `HostGuard`, `ImageGenerator`, `LearningExtractor`, `LogFeed`, `Logger`, `MediaDownloader`, `MemoryAdmin`, `MemoryStore`, `MessageStore`, `MetricsQuery`, `MetricsSink`, `Outbox`, `PageFetcher`, `SoulStore`, `SubAgents`, `WebSearch`.

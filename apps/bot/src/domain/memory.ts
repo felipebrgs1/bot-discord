@@ -1,170 +1,97 @@
 /**
- * Aprendizado duravel (sem embeddings): um lote de mensagens + as memorias
- * atuais viram {summary, memories[], forget[], confirm[], episodes[]}. O modelo
- * ve o que ja sabe, entao atualiza (mesma key), esquece ou confirma em vez de
- * so empilhar. Aqui ficam o prompt e a validacao do que volta.
+ * Memoria em blocos (modelo do Hermes): um bloco do grupo por canal e um por
+ * pessoa, cada um uma lista curta de entradas com teto de caracteres. O bloco
+ * entra inteiro no prompt; escrever e add/replace/remove, e passar do teto e
+ * erro que obriga a consolidar (juntar ou apagar) em vez de empilhar.
  */
 
 import type { StoredMessage } from "./message.ts";
 
-export type MemoryKind = "fact" | "preference" | "lesson" | "culture";
 export type MemoryScope = "group" | "user";
-export type MemoryStatus = "active" | "suppressed";
 
-export interface ExtractedMemory {
-	key: string;
-	kind: MemoryKind;
+/** Bloco do grupo (ownerId = canal) ou de uma pessoa (ownerId = id do Discord). */
+export interface MemoryBlockRef {
 	scope: MemoryScope;
-	personId: string;
-	content: string;
+	ownerId: string;
 }
 
-export interface ExtractedEpisode {
-	key: string;
-	title: string;
-	summary: string;
+export const MEMORY_LIMITS: Record<MemoryScope, number> = { group: 2200, user: 1375 };
+
+export type MemoryEdit =
+	| { action: "add"; content: string }
+	| { action: "replace"; oldText: string; content: string }
+	| { action: "remove"; oldText: string };
+
+export type EditResult = { ok: true; entries: string[] } | { ok: false; error: string };
+
+/** Entrada e uma linha so: espacos e quebras viram um espaco. */
+const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/** Entradas mais a quebra entre elas. */
+export function blockSize(entries: readonly string[]): number {
+	return entries.reduce((n, e) => n + e.length, 0) + Math.max(entries.length - 1, 0);
 }
 
-/** Aponta uma memoria existente. */
-export interface MemoryRef {
-	key: string;
-	scope: MemoryScope;
-	personId: string;
+/** Indice da unica entrada que contem o trecho, ou o erro. */
+function locate(entries: readonly string[], oldText: string): number | string {
+	const needle = normalize(oldText).toLowerCase();
+	if (!needle) return "old_text vazio: passe um trecho da entrada";
+	const hits = entries.flatMap((e, i) => (e.toLowerCase().includes(needle) ? [i] : []));
+	if (hits.length === 0) return `nenhuma entrada contém "${oldText}"`;
+	if (hits.length > 1) return `trecho ambíguo: ${hits.length} entradas contêm "${oldText}"; use um trecho maior`;
+	return hits[0] ?? -1;
 }
 
-export interface ForgetRequest extends MemoryRef {
-	reason: string;
-}
-
-export interface Extraction {
-	summary: string;
-	/** Novas ou atualizadas (mesma key = atualiza). */
-	memories: ExtractedMemory[];
-	/** Conhecidas que deixaram de valer. */
-	forget: ForgetRequest[];
-	/** Conhecidas reafirmadas no lote (sobem no ranking). */
-	confirm: MemoryRef[];
-	episodes: ExtractedEpisode[];
-}
-
-/** Memoria encontrada por busca. */
-export interface MemoryHit {
-	key: string;
-	kind: string;
-	scope: string;
-	personId: string;
-	content: string;
-}
-
-export interface FamiliarMemory {
-	kind: string;
-	content: string;
-}
-
-const KINDS: readonly string[] = ["fact", "preference", "lesson", "culture"];
-const SCOPES: readonly string[] = ["group", "user"];
-
-function slug(s: string): string {
-	return s
-		.toLowerCase()
-		.normalize("NFD")
-		.replace(/[̀-ͯ]/g, "")
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 60);
-}
-
-const str = (v: unknown): string => (typeof v === "string" ? v : "");
-
-const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
-
-/** Ref valida: memoria conhecida e, se for de pessoa, ela falou no lote. */
-function knownRef(c: Record<string, unknown>, authorIds: readonly string[], known: readonly MemoryHit[]): MemoryRef | undefined {
-	const key = str(c["key"]).trim();
-	const scope = str(c["scope"]);
-	const personId = scope === "user" ? str(c["person_id"]) : "";
-	if (scope === "user" && !authorIds.includes(personId)) return undefined;
-	const hit = known.find((k) => k.key === key && k.scope === scope && k.personId === personId);
-	return hit ? { key, scope: scope as MemoryScope, personId } : undefined;
-}
-
-/**
- * Valida o JSON do modelo. Memoria individual so da propria pessoa, que
- * precisa ter falado no lote; kind/scope fora da lista e descartado;
- * forget/confirm so de memoria conhecida.
- */
-export function validateExtraction(raw: unknown, authorIds: readonly string[], known: readonly MemoryHit[]): Extraction {
-	const v = (raw ?? {}) as Record<string, unknown>;
-	const summary = str(v["summary"]).slice(0, 2000);
-	const memories: ExtractedMemory[] = [];
-	for (const c of list(v["memories"])) {
-		const kind = str(c["kind"]);
-		const scope = str(c["scope"]);
-		if (!KINDS.includes(kind) || !SCOPES.includes(scope)) continue;
-		const person = str(c["person_id"]);
-		if (scope === "user" && (!person || !authorIds.includes(person))) continue;
-		const content = str(c["content"]).trim();
-		if (!content || content.length > 1000) continue;
-		const key = str(c["key"]).trim() ? slug(str(c["key"])) : slug(content);
-		if (!key) continue;
-		memories.push({
-			key,
-			kind: kind as MemoryKind,
-			scope: scope as MemoryScope,
-			personId: scope === "user" ? person : "",
-			content,
-		});
+/** Teto so barra o que cresce: encolher sempre pode (teto baixado ou bloco antigo). */
+function withinLimit(before: readonly string[], next: string[], limit: number): EditResult {
+	const size = blockSize(next);
+	if (size > limit && size > blockSize(before)) {
+		return {
+			ok: false,
+			error: `memória cheia: ficaria com ${size}/${limit} caracteres. Junte entradas parecidas (replace) ou apague o que perdeu valor (remove) e tente de novo.`,
+		};
 	}
-	const episodes: ExtractedEpisode[] = [];
-	for (const e of list(v["episodes"])) {
-		const title = str(e["title"]).trim().slice(0, 200);
-		const epSummary = str(e["summary"]).trim().slice(0, 1000);
-		if (!title || !epSummary) continue;
-		const key = str(e["key"]).trim() ? slug(str(e["key"])) : slug(title);
-		if (!key) continue;
-		episodes.push({ key, title, summary: epSummary });
-	}
-	const forget: ForgetRequest[] = [];
-	for (const c of list(v["forget"])) {
-		const ref = knownRef(c, authorIds, known);
-		if (ref) forget.push({ ...ref, reason: str(c["reason"]).trim().slice(0, 300) });
-	}
-	const confirm: MemoryRef[] = [];
-	for (const c of list(v["confirm"])) {
-		const ref = knownRef(c, authorIds, known);
-		if (ref) confirm.push(ref);
-	}
-	return { summary, memories, forget, confirm, episodes };
+	return { ok: true, entries: next };
 }
 
-export function extractionPrompt(channelId: string, batch: readonly StoredMessage[], known: readonly MemoryHit[]): string {
-	const lines = batch.map(
-		(m) =>
-			`[${m.createdAt.slice(0, 16).replace("T", " ")}] ${m.fromBot ? "[bot] " : ""}${m.authorName} (${m.authorId}): ${m.body.slice(0, 800)}`,
-	);
-	const current = known.map(
-		(k) => `- key=${k.key} scope=${k.scope}${k.personId ? ` person_id=${k.personId}` : ""} (${k.kind}): ${k.content}`,
-	);
-	return `Você mantém a memória durável de um grupo de Discord (canal ${channelId}).
-Responda SÓ com JSON: {"summary": "resumo do lote em 2-4 linhas", "memories": [...], "forget": [...], "confirm": [...], "episodes": [...]}.
-Cada memory: {"key": "slug-estavel", "kind": "fact|preference|lesson|culture", "scope": "group|user", "person_id": "id ou vazio", "content": "frase autocontida"}.
-Cada forget: {"key", "scope", "person_id", "reason"}: memória atual que deixou de valer (ex. "larguei o LoL").
-Cada confirm: {"key", "scope", "person_id"}: memória atual reafirmada no lote, sem mudança.
-Memórias atuais:
-${current.length > 0 ? current.join("\n") : "(nenhuma)"}
-Regras:
-- Fato que mudou: reuse a MESMA key da memória atual com o conteúdo novo. Nunca crie key parecida para o mesmo assunto.
-- forget e confirm só para memórias da lista acima.
-- Só o que é DURÁVEL (fato, gosto, correção ao bot, piada interna com significado). Conversa casual = nada.
-- scope user SOMENTE para declaração da própria pessoa (person_id = autor dela); resto é group.
-- lesson só de correção concreta ao que o bot fez. culture sempre group.
-- Linha marcada [bot] é fala de bot: nunca vira fato nem memória; só a correção que as pessoas fazem a ela.
-- episodes: histórias do grupo com começo/meio (título + resumo). Vazio se não houver.
-Mensagens:
-${lines.join("\n")}`;
+/** Troca o bloco inteiro (painel): mesma normalizacao e mesmo teto das edicoes. */
+export function replaceBlock(before: readonly string[], next: readonly string[], limit: number): EditResult {
+	return withinLimit(before, next.map(normalize).filter(Boolean), limit);
 }
 
-/** Linha da conversa recente do canal. */
+export function applyMemoryEdit(entries: readonly string[], edit: MemoryEdit, limit: number): EditResult {
+	let next: string[];
+	if (edit.action === "add") {
+		const content = normalize(edit.content);
+		if (!content) return { ok: false, error: "conteúdo vazio" };
+		if (entries.some((e) => e.toLowerCase() === content.toLowerCase())) return { ok: false, error: "essa entrada já existe" };
+		next = [...entries, content];
+	} else {
+		const at = locate(entries, edit.oldText);
+		if (typeof at === "string") return { ok: false, error: at };
+		if (edit.action === "remove") {
+			next = entries.filter((_, i) => i !== at);
+		} else {
+			const content = normalize(edit.content);
+			if (!content) return { ok: false, error: "conteúdo vazio; para apagar use remove" };
+			next = entries.map((e, i) => (i === at ? content : e));
+		}
+	}
+	return withinLimit(entries, next, limit);
+}
+
+export function memoryBlockText(title: string, entries: readonly string[], limit: number): string {
+	const body = entries.length > 0 ? entries.map((e) => `- ${e}`).join("\n") : "(vazia)";
+	return `[${title}] (${blockSize(entries)}/${limit})\n${body}`;
+}
+
+/** Como o bot usa e mantem a memoria; vai no prompt da sessao. */
+export const MEMORY_GUIDANCE = `[como usar sua memória]
+Você tem uma memória curta e durável: um bloco do grupo (abaixo) e um bloco de cada pessoa (vem junto da mensagem dela).
+- Use a memória só quando ela tiver a ver com o assunto. Não force piada interna nem fato antigo em resposta que não pede.
+- Salve com a tool memory quando alguém corrigir você, disser uma preferência que vale para sempre ou contar um fato durável. Papo do dia, notícia e opinião passageira não entram.
+- Cada entrada é uma frase curta e autocontida. Se a memória estiver cheia, junte entradas parecidas ou apague a que perdeu valor antes de adicionar.`;
+
 export interface RecentLine {
 	authorName: string;
 	body: string;
@@ -174,8 +101,8 @@ export interface TurnInput {
 	authorId: string;
 	authorName: string;
 	text: string;
-	/** Memorias da pessoa que esta falando. */
-	mine: readonly FamiliarMemory[];
+	/** Bloco de memoria da pessoa que fala. */
+	memory: readonly string[];
 	/** Conversa do canal desde a ultima fala do bot, antigas primeiro. */
 	recent: readonly RecentLine[];
 }
@@ -192,30 +119,78 @@ function fitLines(lines: readonly string[], maxChars: number): string[] {
 	return out;
 }
 
-const memoryLine = (m: FamiliarMemory) => `- (${m.kind}) ${m.content}`;
-
-/** Teto das memorias da pessoa no turno (vem ordenado por importancia). */
-const MAX_MINE_CHARS = 800;
-
-/** Memoria do grupo no prompt da sessao ('' se nada). */
-export function groupMemoryText(group: readonly FamiliarMemory[], maxChars = 1500): string {
-	const lines = fitLines(group.map(memoryLine), maxChars);
-	return lines.length > 0 ? `[memória do grupo]\n${lines.join("\n")}` : "";
-}
-
 /**
  * Texto do turno: a sessao e do canal (varias pessoas), entao cada mensagem
- * diz quem fala, o que o bot lembra dela e o que rolou desde a ultima fala dele.
+ * diz quem fala, a memoria dela e o que rolou desde a ultima fala do bot,
+ * deixando claro que so a ultima parte e a pergunta.
  */
 export function turnText(turn: TurnInput, maxRecentChars = 2000): string {
 	const parts = [`[mensagem de ${turn.authorName} (id ${turn.authorId})]`];
-	const mine = fitLines(turn.mine.map(memoryLine), MAX_MINE_CHARS);
-	if (mine.length > 0) parts.push(`[o que você lembra de ${turn.authorName}]`, ...mine);
+	if (turn.memory.length > 0) parts.push(memoryBlockText(`memória de ${turn.authorName}`, turn.memory, MEMORY_LIMITS.user));
 	const recent = fitLines(
 		turn.recent.map((r) => `${r.authorName}: ${r.body}`).reverse(),
 		maxRecentChars,
 	).reverse();
-	if (recent.length > 0) parts.push("[conversa no canal desde sua última fala]", ...recent);
-	if (parts.length > 1) parts.push("---");
+	if (recent.length > 0) parts.push("[conversa recente no canal: só contexto, não é pergunta para você]", ...recent);
+	if (parts.length > 1) parts.push(`[responda só a esta mensagem de ${turn.authorName}]`);
 	return [...parts, turn.text].join("\n");
+}
+
+export interface ReviewBlocks {
+	group: readonly string[];
+	people: readonly { personId: string; name: string; entries: readonly string[] }[];
+}
+
+/** Revisao em segundo plano: o modelo ve o lote e os blocos e propoe edicoes. */
+export function reviewPrompt(batch: readonly StoredMessage[], blocks: ReviewBlocks): string {
+	const lines = batch.map(
+		(m) =>
+			`[${m.createdAt.slice(0, 16).replace("T", " ")}] ${m.fromBot ? "[bot] " : ""}${m.authorName} (${m.authorId}): ${m.body.slice(0, 800)}`,
+	);
+	const current = [
+		memoryBlockText("memória do grupo", blocks.group, MEMORY_LIMITS.group),
+		...blocks.people.map((p) => memoryBlockText(`memória de ${p.name} (person_id ${p.personId})`, p.entries, MEMORY_LIMITS.user)),
+	];
+	return `Você cuida da memória durável de um bot de Discord. A memória é pequena de propósito e entra inteira em toda conversa.
+Responda SÓ com JSON: {"edits": [...]}. Sem nada para mudar: {"edits": []} (o caso mais comum).
+Cada edit: {"target": "group|user", "person_id": "id (só em user)", "action": "add|replace|remove", "old_text": "trecho único da entrada (replace/remove)", "content": "frase curta (add/replace)"}.
+Memória atual:
+${current.join("\n")}
+Regras:
+- Só o que é durável e útil em conversa futura: correção que alguém fez ao bot, preferência declarada, fato estável sobre a pessoa ou o grupo, piada interna recorrente. Papo do dia, notícia, opinião passageira e o que já está na memória = nada.
+- target user só para o que a própria pessoa disse de si (person_id = autor da mensagem). O resto é group.
+- Fato que mudou: replace na entrada antiga, nunca uma entrada nova parecida.
+- Respeite o teto entre parênteses: se não couber, junte entradas parecidas (replace) ou apague a de menor valor (remove) antes do add.
+- Linha marcada [bot] é fala de bot: nunca vira memória; só a correção que as pessoas fazem a ela.
+Mensagens:
+${lines.join("\n")}`;
+}
+
+export interface ReviewEdit {
+	ref: MemoryBlockRef;
+	edit: MemoryEdit;
+}
+
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/** Edicoes validas do JSON da revisao; pessoa so se falou no lote. */
+export function parseReviewEdits(raw: unknown, channelId: string, authorIds: readonly string[]): ReviewEdit[] {
+	const list = (raw as { edits?: unknown } | null)?.edits;
+	if (!Array.isArray(list)) return [];
+	const out: ReviewEdit[] = [];
+	for (const item of list as Record<string, unknown>[]) {
+		const target = str(item["target"]);
+		const person = str(item["person_id"]);
+		let ref: MemoryBlockRef;
+		if (target === "group") ref = { scope: "group", ownerId: channelId };
+		else if (target === "user" && authorIds.includes(person)) ref = { scope: "user", ownerId: person };
+		else continue;
+		const action = str(item["action"]);
+		const content = str(item["content"]);
+		const oldText = str(item["old_text"]);
+		if (action === "add" && content) out.push({ ref, edit: { action, content } });
+		else if (action === "replace" && oldText && content) out.push({ ref, edit: { action, oldText, content } });
+		else if (action === "remove" && oldText) out.push({ ref, edit: { action, oldText } });
+	}
+	return out;
 }
