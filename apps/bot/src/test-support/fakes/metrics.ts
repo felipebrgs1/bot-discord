@@ -1,5 +1,5 @@
-import type { MetricsQuery, MetricsSink, MetricsSnapshot, MetricsTotals } from "../../application/ports/metrics.ts";
-import type { TurnReport } from "../../domain/turn.ts";
+import type { MetricsQuery, MetricsSink, MetricsSnapshot, MetricsTotals } from "@/application/ports/metrics.ts";
+import type { TurnReport } from "@/domain/turn.ts";
 
 function totalsOf(turns: readonly TurnReport[]): MetricsTotals {
 	const sum = (f: (t: TurnReport) => number | null) => turns.reduce((acc, t) => acc + (f(t) ?? 0), 0);

@@ -1,4 +1,4 @@
-import { searchTerms } from "../../domain/search-terms.ts";
+import { searchTerms } from "@/domain/search-terms.ts";
 
 /** Quantos termos da busca casam por prefixo com alguma palavra do texto (mesma regra do FTS). */
 export function matchCount(query: string, text: string): number {

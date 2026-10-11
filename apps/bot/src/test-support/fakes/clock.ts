@@ -1,4 +1,4 @@
-import type { Clock } from "../../application/ports/clock.ts";
+import type { Clock } from "@/application/ports/clock.ts";
 
 export class FakeClock implements Clock {
 	readonly sleeps: number[] = [];

@@ -1,6 +1,6 @@
 /** Dispara a revisao de memoria a cada intervalo (um tick por vez). */
 
-import type { ReviewMemory, ReviewOptions } from "../../../application/review-memory.ts";
+import type { ReviewMemory, ReviewOptions } from "@/application/review-memory.ts";
 
 export interface LoopOptions extends ReviewOptions {
 	channels: () => readonly string[];

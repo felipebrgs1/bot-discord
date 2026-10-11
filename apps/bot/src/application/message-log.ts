@@ -1,4 +1,4 @@
-import { MAX_STORED_BODY, type NewMessage } from "../domain/message.ts";
+import { MAX_STORED_BODY, type NewMessage } from "@/domain/message.ts";
 import type { Logger } from "./ports/logger.ts";
 import type { MessageStore } from "./ports/message-store.ts";
 

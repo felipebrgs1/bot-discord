@@ -6,10 +6,10 @@
  * que deram certo, papel do autor, resposta quebrada em pedacos do Discord.
  */
 
-import { cooldownRemaining } from "../domain/cooldown.ts";
-import type { ImageData } from "../domain/image.ts";
-import { splitMessage } from "../domain/reply-split.ts";
-import { roleOf } from "../domain/roles.ts";
+import { cooldownRemaining } from "@/domain/cooldown.ts";
+import type { ImageData } from "@/domain/image.ts";
+import { splitMessage } from "@/domain/reply-split.ts";
+import { roleOf } from "@/domain/roles.ts";
 import type { ChatAgent } from "./ports/chat-agent.ts";
 import type { Clock } from "./ports/clock.ts";
 import type { Turn } from "./persona.ts";

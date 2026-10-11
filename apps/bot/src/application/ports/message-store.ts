@@ -1,4 +1,4 @@
-import type { NewMessage, StoredMessage } from "../../domain/message.ts";
+import type { NewMessage, StoredMessage } from "@/domain/message.ts";
 
 export interface MessageStore {
 	/** Grava; undefined se o messageId ja existia (idempotente). */

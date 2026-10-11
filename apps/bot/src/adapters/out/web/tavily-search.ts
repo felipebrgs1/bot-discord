@@ -1,6 +1,6 @@
 /** WebSearch pela API do Tavily (plano free com cota mensal); traz resposta direta + resultados. */
 
-import type { WebSearch } from "../../../application/ports/web-search.ts";
+import type { WebSearch } from "@/application/ports/web-search.ts";
 
 export interface TavilySearchOptions {
 	apiKey: string;

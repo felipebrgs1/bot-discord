@@ -1,5 +1,5 @@
-import type { OutboxHarness } from "../../application/ports/outbox.contract.ts";
-import type { Outbox } from "../../application/ports/outbox.ts";
+import type { OutboxHarness } from "@/application/ports/outbox.contract.ts";
+import type { Outbox } from "@/application/ports/outbox.ts";
 
 export class FakeOutbox implements Outbox {
 	readonly files = new Set<string>();

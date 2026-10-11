@@ -1,4 +1,4 @@
-import type { TurnReport } from "../../domain/turn.ts";
+import type { TurnReport } from "@/domain/turn.ts";
 
 export interface MetricsSink {
 	/** Nunca lanca: telemetria nao quebra resposta. */

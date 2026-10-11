@@ -5,8 +5,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { WorkerFactory } from "../adapters/out/pi-agent/pi-sub-agents.ts";
-import type { SessionFactory } from "../adapters/out/pi-agent/session-pool.ts";
+import type { WorkerFactory } from "@/adapters/out/pi-agent/pi-sub-agents.ts";
+import type { SessionFactory } from "@/adapters/out/pi-agent/session-pool.ts";
 import { compose } from "./compose.ts";
 
 const fakeSessions: SessionFactory = {

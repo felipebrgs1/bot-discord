@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import type { NewMessage } from "../../domain/message.ts";
+import type { NewMessage } from "@/domain/message.ts";
 import type { HistorySearch } from "./history-search.ts";
 import type { MessageStore } from "./message-store.ts";
 

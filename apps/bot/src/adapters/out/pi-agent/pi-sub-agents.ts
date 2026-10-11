@@ -1,9 +1,9 @@
 /** SubAgents sobre sessoes efemeras do pi: uma por tarefa, descartada no fim. */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { MetricsSink } from "../../../application/ports/metrics.ts";
-import type { SubAgents, SubTask } from "../../../application/ports/sub-agents.ts";
-import type { TurnReport } from "../../../domain/turn.ts";
+import type { MetricsSink } from "@/application/ports/metrics.ts";
+import type { SubAgents, SubTask } from "@/application/ports/sub-agents.ts";
+import type { TurnReport } from "@/domain/turn.ts";
 import { statsOf, turnReport, watchTools } from "./pi-chat-agent.ts";
 import { askSession } from "./session-pool.ts";
 

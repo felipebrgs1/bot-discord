@@ -4,7 +4,7 @@
  * quando o texto nao e comando.
  */
 
-import { roleOf } from "../domain/roles.ts";
+import { roleOf } from "@/domain/roles.ts";
 import type { ChatSessions } from "./ports/chat-agent.ts";
 import type { SoulStore } from "./ports/soul-store.ts";
 import type { SearchGames } from "./search-games.ts";

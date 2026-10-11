@@ -1,9 +1,9 @@
 /** ChatAgent + ChatSessions sobre o SessionPool: metricas por turno e passos de tool. */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { ChatAgent, ChatRequest, ChatSessions, ToolStep } from "../../../application/ports/chat-agent.ts";
-import type { MetricsSink } from "../../../application/ports/metrics.ts";
-import type { TurnReport } from "../../../domain/turn.ts";
+import type { ChatAgent, ChatRequest, ChatSessions, ToolStep } from "@/application/ports/chat-agent.ts";
+import type { MetricsSink } from "@/application/ports/metrics.ts";
+import type { TurnReport } from "@/domain/turn.ts";
 import type { SessionPool } from "./session-pool.ts";
 
 export interface StatsTotals {

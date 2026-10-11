@@ -1,7 +1,7 @@
 /** PageFetcher sobre fetch: UA de navegador, timeout de 20s, guarda SSRF antes de cada pedido. */
 
-import type { HostGuard } from "../../../application/ports/host-guard.ts";
-import type { BinaryPage, PageFetcher } from "../../../application/ports/page-fetcher.ts";
+import type { HostGuard } from "@/application/ports/host-guard.ts";
+import type { BinaryPage, PageFetcher } from "@/application/ports/page-fetcher.ts";
 
 export const BROWSER_UA =
 	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";

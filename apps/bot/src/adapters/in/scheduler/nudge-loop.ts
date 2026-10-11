@@ -1,6 +1,6 @@
 /** Verifica canais parados a cada intervalo (um tick por vez). */
 
-import type { IdleNudge } from "../../../application/idle-nudge.ts";
+import type { IdleNudge } from "@/application/idle-nudge.ts";
 
 export function startNudgeLoop(nudge: Pick<IdleNudge, "tick">, intervalMs: number): () => void {
 	let stopped = false;

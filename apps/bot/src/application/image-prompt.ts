@@ -1,6 +1,6 @@
 /** /gerar: um sub-agente reescreve o pedido num prompt de imagem com o contexto do canal. */
 
-import { IMAGE_PROMPT_INSTRUCTIONS } from "../domain/image.ts";
+import { IMAGE_PROMPT_INSTRUCTIONS } from "@/domain/image.ts";
 import type { Logger } from "./ports/logger.ts";
 import type { SubAgents } from "./ports/sub-agents.ts";
 import type { Turn } from "./persona.ts";

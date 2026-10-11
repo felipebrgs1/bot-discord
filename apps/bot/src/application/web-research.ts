@@ -1,7 +1,7 @@
 /** Pesquisa e leitura de pagina para o agente (texto pronto; erro vira texto, nunca excecao). */
 
-import { htmlToText } from "../domain/html-text.ts";
-import { parseHttpUrl } from "../domain/http-url.ts";
+import { htmlToText } from "@/domain/html-text.ts";
+import { parseHttpUrl } from "@/domain/http-url.ts";
 import type { PageFetcher } from "./ports/page-fetcher.ts";
 import type { WebSearch } from "./ports/web-search.ts";
 

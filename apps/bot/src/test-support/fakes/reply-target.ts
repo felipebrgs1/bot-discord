@@ -1,4 +1,4 @@
-import type { ReplyTarget } from "../../application/reply-to-message.ts";
+import type { ReplyTarget } from "@/application/reply-to-message.ts";
 
 /** Registra tudo que o caso de uso fez com o destino, em ordem. */
 export class FakeReplyTarget implements ReplyTarget {

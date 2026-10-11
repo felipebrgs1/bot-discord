@@ -1,6 +1,6 @@
-import type { LearningEvent, MemoryAdmin, MemoryBlockRecord, MemoryBlockVersion } from "../../application/ports/memory-admin.ts";
-import type { MemoryStore } from "../../application/ports/memory-store.ts";
-import type { MemoryBlockRef, MemoryScope } from "../../domain/memory.ts";
+import type { LearningEvent, MemoryAdmin, MemoryBlockRecord, MemoryBlockVersion } from "@/application/ports/memory-admin.ts";
+import type { MemoryStore } from "@/application/ports/memory-store.ts";
+import type { MemoryBlockRef, MemoryScope } from "@/domain/memory.ts";
 
 interface VersionRow extends MemoryBlockVersion {
 	scope: MemoryScope;

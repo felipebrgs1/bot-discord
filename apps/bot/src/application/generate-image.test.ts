@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { FakeClock } from "../test-support/fakes/clock.ts";
-import { FakeLogger } from "../test-support/fakes/logger.ts";
-import { FakeOutbox } from "../test-support/fakes/outbox.ts";
+import { FakeClock } from "@/test-support/fakes/clock.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
+import { FakeOutbox } from "@/test-support/fakes/outbox.ts";
 import { GenerateImage } from "./generate-image.ts";
 import type { ImageGenerator } from "./ports/image-generator.ts";
 

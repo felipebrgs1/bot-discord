@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { ChatRequest, ToolStep } from "../../../application/ports/chat-agent.ts";
-import { FakeMetrics } from "../../../test-support/fakes/metrics.ts";
+import type { ChatRequest, ToolStep } from "@/application/ports/chat-agent.ts";
+import { FakeMetrics } from "@/test-support/fakes/metrics.ts";
 import { PiChatAgent } from "./pi-chat-agent.ts";
 import { type SessionFactory, SessionPool } from "./session-pool.ts";
 

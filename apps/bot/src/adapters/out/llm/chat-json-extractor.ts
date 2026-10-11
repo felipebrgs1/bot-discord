@@ -1,7 +1,7 @@
 /** LearningExtractor via endpoint de chat OpenAI-compatible (response_format json_object). */
 
 import { randomUUID } from "node:crypto";
-import type { LearningExtractor } from "../../../application/ports/learning-extractor.ts";
+import type { LearningExtractor } from "@/application/ports/learning-extractor.ts";
 
 export interface ChatJsonOptions {
 	baseUrl: string;

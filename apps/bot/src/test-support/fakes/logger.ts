@@ -1,4 +1,4 @@
-import type { Logger } from "../../application/ports/logger.ts";
+import type { Logger } from "@/application/ports/logger.ts";
 
 export class FakeLogger implements Logger {
 	readonly lines: string[] = [];

@@ -1,4 +1,4 @@
-import type { MemoryBlockRef } from "../../domain/memory.ts";
+import type { MemoryBlockRef } from "@/domain/memory.ts";
 
 /** Blocos de memoria (grupo por canal, pessoa global) e o cursor da revisao. */
 export interface MemoryStore {

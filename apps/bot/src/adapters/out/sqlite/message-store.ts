@@ -1,7 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
-import type { HistoryHit, HistoryQuery, HistorySearch } from "../../../application/ports/history-search.ts";
-import type { MessageStore } from "../../../application/ports/message-store.ts";
-import type { NewMessage, StoredMessage } from "../../../domain/message.ts";
+import type { HistoryHit, HistoryQuery, HistorySearch } from "@/application/ports/history-search.ts";
+import type { MessageStore } from "@/application/ports/message-store.ts";
+import type { NewMessage, StoredMessage } from "@/domain/message.ts";
 import { ftsMatch } from "./fts.ts";
 
 interface Row {

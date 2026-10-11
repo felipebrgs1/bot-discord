@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { FakeMessageStore } from "../test-support/fakes/message-store.ts";
+import { FakeMessageStore } from "@/test-support/fakes/message-store.ts";
 import { Recall } from "./recall.ts";
 
 function setup() {

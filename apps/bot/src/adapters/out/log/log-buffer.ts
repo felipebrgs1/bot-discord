@@ -3,8 +3,8 @@
  * stdout recebe tudo.
  */
 
-import type { LogEntry, LogFeed } from "../../../application/ports/log-feed.ts";
-import type { Logger } from "../../../application/ports/logger.ts";
+import type { LogEntry, LogFeed } from "@/application/ports/log-feed.ts";
+import type { Logger } from "@/application/ports/logger.ts";
 
 const CAPACITY = 2000;
 

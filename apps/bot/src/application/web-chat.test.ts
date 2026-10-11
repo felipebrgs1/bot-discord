@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { FakeClock } from "../test-support/fakes/clock.ts";
-import { FakeConfigStore } from "../test-support/fakes/config-store.ts";
-import { FakeMemoryStore } from "../test-support/fakes/memory-store.ts";
-import { FakeMessageStore } from "../test-support/fakes/message-store.ts";
-import { FakeSoulStore } from "../test-support/fakes/soul-store.ts";
-import { FakeSubAgents } from "../test-support/fakes/sub-agents.ts";
+import { FakeClock } from "@/test-support/fakes/clock.ts";
+import { FakeConfigStore } from "@/test-support/fakes/config-store.ts";
+import { FakeMemoryStore } from "@/test-support/fakes/memory-store.ts";
+import { FakeMessageStore } from "@/test-support/fakes/message-store.ts";
+import { FakeSoulStore } from "@/test-support/fakes/soul-store.ts";
+import { FakeSubAgents } from "@/test-support/fakes/sub-agents.ts";
 import { Persona } from "./persona.ts";
 import type { ChatAgent, ChatRequest, ChatSessions, ToolStep } from "./ports/chat-agent.ts";
 import { Swarm } from "./swarm.ts";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { FakeSoulStore } from "../test-support/fakes/soul-store.ts";
+import { FakeSoulStore } from "@/test-support/fakes/soul-store.ts";
 import type { ChatSessions } from "./ports/chat-agent.ts";
 import { SearchGames } from "./search-games.ts";
 import { TextCommands } from "./text-commands.ts";

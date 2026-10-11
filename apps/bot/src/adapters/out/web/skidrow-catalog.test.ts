@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { FakePageFetcher } from "../../../test-support/fakes/page-fetcher.ts";
+import { FakePageFetcher } from "@/test-support/fakes/page-fetcher.ts";
 import { parseMagnet, parseSkidrowTop, SkidrowCatalog, skidrowSearchUrl } from "./skidrow-catalog.ts";
 
 const SKIDROW_HTML = `<html><body>

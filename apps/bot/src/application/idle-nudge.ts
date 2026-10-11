@@ -6,9 +6,9 @@
  * memoria de tentativas garante uma so por silencio.
  */
 
-import { nudgeText, shouldNudge } from "../domain/idle-nudge.ts";
-import { splitMessage } from "../domain/reply-split.ts";
-import type { NudgeConfig } from "../domain/settings.ts";
+import { nudgeText, shouldNudge } from "@/domain/idle-nudge.ts";
+import { splitMessage } from "@/domain/reply-split.ts";
+import type { NudgeConfig } from "@/domain/settings.ts";
 import type { Clock } from "./ports/clock.ts";
 import type { Logger } from "./ports/logger.ts";
 import type { MessageStore } from "./ports/message-store.ts";

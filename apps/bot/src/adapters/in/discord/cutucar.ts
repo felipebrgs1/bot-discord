@@ -1,7 +1,7 @@
 /** Slash command /cutucar: liga/desliga o cutucao de canal parado e troca o tempo (so admin). */
 
 import { SlashCommandBuilder } from "discord.js";
-import { IDLE_MIN_RANGE } from "../../../domain/idle-nudge.ts";
+import { IDLE_MIN_RANGE } from "@/domain/idle-nudge.ts";
 
 export const CUTUCAR_COMMAND_JSON = new SlashCommandBuilder()
 	.setName("cutucar")

@@ -1,4 +1,4 @@
-import type { GameHit } from "../../domain/game.ts";
+import type { GameHit } from "@/domain/game.ts";
 
 export interface GameCatalog {
 	/** Top `limit` do catalogo + link da busca feita. */

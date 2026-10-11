@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import { DEFAULT_SOUL } from "../../domain/soul.ts";
+import { DEFAULT_SOUL } from "@/domain/soul.ts";
 import type { SoulStore } from "./soul-store.ts";
 
 export function soulStoreContract(make: () => SoulStore): void {

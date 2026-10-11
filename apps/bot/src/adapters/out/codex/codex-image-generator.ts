@@ -3,8 +3,8 @@
  * com a tool image_generation (gpt-image-2.5-flare), usando o token OAuth do login do pi.
  */
 
-import type { ImageGenerator } from "../../../application/ports/image-generator.ts";
-import type { ImageData } from "../../../domain/image.ts";
+import type { ImageGenerator } from "@/application/ports/image-generator.ts";
+import type { ImageData } from "@/domain/image.ts";
 
 const ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
 /** Fixo: o flare e o rapido do GPT Image 2.5 (sem escalar para o sunburst). */

@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import { defaultSettings } from "../../domain/settings.ts";
+import { defaultSettings } from "@/domain/settings.ts";
 import type { ConfigStore } from "./config-store.ts";
 
 export function configStoreContract(make: () => ConfigStore): void {

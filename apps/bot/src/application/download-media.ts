@@ -1,7 +1,7 @@
 /** Tool download_media e /baixar: valida a URL e a plataforma, baixa para o outbox, responde em texto. */
 
-import { parseHttpUrl } from "../domain/http-url.ts";
-import { mediaHostAllowed, mediaUnsupportedReason } from "../domain/media-policy.ts";
+import { parseHttpUrl } from "@/domain/http-url.ts";
+import { mediaHostAllowed, mediaUnsupportedReason } from "@/domain/media-policy.ts";
 import type { HostGuard } from "./ports/host-guard.ts";
 import type { Logger } from "./ports/logger.ts";
 import type { MediaDownloader } from "./ports/media-downloader.ts";

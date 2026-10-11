@@ -1,5 +1,5 @@
-import type { SoulStore } from "../../application/ports/soul-store.ts";
-import { DEFAULT_SOUL, type Soul, soulSlug } from "../../domain/soul.ts";
+import type { SoulStore } from "@/application/ports/soul-store.ts";
+import { DEFAULT_SOUL, type Soul, soulSlug } from "@/domain/soul.ts";
 
 export class FakeSoulStore implements SoulStore {
 	private readonly souls = new Map<string, string>();

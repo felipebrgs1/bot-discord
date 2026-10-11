@@ -1,5 +1,5 @@
-import type { ConfigStore } from "../../application/ports/config-store.ts";
-import { type BotSettings, getSetting, settingsFrom } from "../../domain/settings.ts";
+import type { ConfigStore } from "@/application/ports/config-store.ts";
+import { type BotSettings, getSetting, settingsFrom } from "@/domain/settings.ts";
 
 export class FakeConfigStore implements ConfigStore {
 	private readonly entries = new Map<string, unknown>();

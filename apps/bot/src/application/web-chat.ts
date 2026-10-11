@@ -3,9 +3,9 @@
  * persistidas no historico; o usuario do painel e dashboard.web_user_id.
  */
 
-import { roleOf } from "../domain/roles.ts";
-import type { StoredMessage } from "../domain/message.ts";
-import { canSwarm, parseSwarmCommand, synthesisText } from "../domain/swarm.ts";
+import { roleOf } from "@/domain/roles.ts";
+import type { StoredMessage } from "@/domain/message.ts";
+import { canSwarm, parseSwarmCommand, synthesisText } from "@/domain/swarm.ts";
 import type { Persona } from "./persona.ts";
 import type { ChatAgent, ChatSessions, ToolStep } from "./ports/chat-agent.ts";
 import type { Clock } from "./ports/clock.ts";

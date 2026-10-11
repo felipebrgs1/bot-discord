@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { SWARM_PLANNER_PROMPT, SWARM_WORKER_PROMPT } from "../domain/swarm.ts";
-import { FakeSubAgents } from "../test-support/fakes/sub-agents.ts";
+import { SWARM_PLANNER_PROMPT, SWARM_WORKER_PROMPT } from "@/domain/swarm.ts";
+import { FakeSubAgents } from "@/test-support/fakes/sub-agents.ts";
 import type { ToolStep } from "./ports/chat-agent.ts";
 import { Swarm } from "./swarm.ts";
 

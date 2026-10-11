@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { LearningEvent, MemoryAdmin, MemoryBlockRecord, MemoryBlockVersion } from "../../../application/ports/memory-admin.ts";
-import type { MemoryStore } from "../../../application/ports/memory-store.ts";
-import type { MemoryBlockRef, MemoryScope } from "../../../domain/memory.ts";
+import type { LearningEvent, MemoryAdmin, MemoryBlockRecord, MemoryBlockVersion } from "@/application/ports/memory-admin.ts";
+import type { MemoryStore } from "@/application/ports/memory-store.ts";
+import type { MemoryBlockRef, MemoryScope } from "@/domain/memory.ts";
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
 

@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
-import { imageShrinkerContract } from "../../../application/ports/image-shrinker.contract.ts";
-import type { ImageData } from "../../../domain/image.ts";
+import { imageShrinkerContract } from "@/application/ports/image-shrinker.contract.ts";
+import type { ImageData } from "@/domain/image.ts";
 import { FfmpegImageShrinker } from "./ffmpeg-image-shrinker.ts";
 
 /** PNG grande e comprimivel (1,4 MB), gerada pelo proprio ffmpeg. */

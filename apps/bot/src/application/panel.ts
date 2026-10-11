@@ -1,9 +1,9 @@
 /** Operacoes do painel web: leitura de estado, curadoria de memoria e config. */
 
-import { blockSize, type EditResult, MEMORY_LIMITS, type MemoryScope } from "../domain/memory.ts";
-import { roleOf } from "../domain/roles.ts";
-import { DEFAULT_SOUL } from "../domain/soul.ts";
-import type { Role } from "../domain/roles.ts";
+import { blockSize, type EditResult, MEMORY_LIMITS, type MemoryScope } from "@/domain/memory.ts";
+import { roleOf } from "@/domain/roles.ts";
+import { DEFAULT_SOUL } from "@/domain/soul.ts";
+import type { Role } from "@/domain/roles.ts";
 import type { ChatSessions } from "./ports/chat-agent.ts";
 import type { ConfigStore } from "./ports/config-store.ts";
 import type { LogEntry, LogFeed } from "./ports/log-feed.ts";

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { MEMORY_GUIDANCE, MEMORY_LIMITS } from "../domain/memory.ts";
-import { FakeMemoryStore } from "../test-support/fakes/memory-store.ts";
-import { FakeMessageStore } from "../test-support/fakes/message-store.ts";
-import { FakeSoulStore } from "../test-support/fakes/soul-store.ts";
+import { MEMORY_GUIDANCE, MEMORY_LIMITS } from "@/domain/memory.ts";
+import { FakeMemoryStore } from "@/test-support/fakes/memory-store.ts";
+import { FakeMessageStore } from "@/test-support/fakes/message-store.ts";
+import { FakeSoulStore } from "@/test-support/fakes/soul-store.ts";
 import { Persona } from "./persona.ts";
 
 function setup() {

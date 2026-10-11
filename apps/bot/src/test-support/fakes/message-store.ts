@@ -1,7 +1,7 @@
-import type { HistoryHit, HistoryQuery, HistorySearch } from "../../application/ports/history-search.ts";
-import type { MessageStore } from "../../application/ports/message-store.ts";
-import type { NewMessage, StoredMessage } from "../../domain/message.ts";
-import { searchTerms } from "../../domain/search-terms.ts";
+import type { HistoryHit, HistoryQuery, HistorySearch } from "@/application/ports/history-search.ts";
+import type { MessageStore } from "@/application/ports/message-store.ts";
+import type { NewMessage, StoredMessage } from "@/domain/message.ts";
+import { searchTerms } from "@/domain/search-terms.ts";
 import { matchCount } from "./search.ts";
 
 export class FakeMessageStore implements MessageStore, HistorySearch {

@@ -1,18 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { AgentMemory } from "../../../application/agent-memory.ts";
-import { DownloadMedia } from "../../../application/download-media.ts";
-import { GenerateImage } from "../../../application/generate-image.ts";
-import type { MediaResult } from "../../../application/ports/media-downloader.ts";
-import { Recall } from "../../../application/recall.ts";
-import { SearchGames } from "../../../application/search-games.ts";
-import { WebResearch } from "../../../application/web-research.ts";
-import { FakeClock } from "../../../test-support/fakes/clock.ts";
-import { FakeLogger } from "../../../test-support/fakes/logger.ts";
-import { FakeMemoryStore } from "../../../test-support/fakes/memory-store.ts";
-import { FakeMessageStore } from "../../../test-support/fakes/message-store.ts";
-import { FakeOutbox } from "../../../test-support/fakes/outbox.ts";
-import { FakePageFetcher } from "../../../test-support/fakes/page-fetcher.ts";
+import { AgentMemory } from "@/application/agent-memory.ts";
+import { DownloadMedia } from "@/application/download-media.ts";
+import { GenerateImage } from "@/application/generate-image.ts";
+import type { MediaResult } from "@/application/ports/media-downloader.ts";
+import { Recall } from "@/application/recall.ts";
+import { SearchGames } from "@/application/search-games.ts";
+import { WebResearch } from "@/application/web-research.ts";
+import { FakeClock } from "@/test-support/fakes/clock.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
+import { FakeMemoryStore } from "@/test-support/fakes/memory-store.ts";
+import { FakeMessageStore } from "@/test-support/fakes/message-store.ts";
+import { FakeOutbox } from "@/test-support/fakes/outbox.ts";
+import { FakePageFetcher } from "@/test-support/fakes/page-fetcher.ts";
 import { botTools } from "./bot-tools.ts";
 
 function setup() {

@@ -1,4 +1,4 @@
-import type { ChatAgent, ChatRequest } from "../../application/ports/chat-agent.ts";
+import type { ChatAgent, ChatRequest } from "@/application/ports/chat-agent.ts";
 
 /** Registra pedidos; a resposta vem de `answer` (padrao: eco do texto). */
 export class FakeChatAgent implements ChatAgent {

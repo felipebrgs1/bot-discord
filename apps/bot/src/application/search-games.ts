@@ -3,7 +3,7 @@
  * tenta o nome oficial ("thesims" -> "The Sims 4") e busca de novo.
  */
 
-import { formatGameList, type GameHit, normalizeGameName } from "../domain/game.ts";
+import { formatGameList, type GameHit, normalizeGameName } from "@/domain/game.ts";
 import type { GameCatalog } from "./ports/game-catalog.ts";
 
 export interface GameSearch {

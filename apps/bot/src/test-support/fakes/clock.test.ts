@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { clockContract } from "../../application/ports/clock.contract.ts";
+import { clockContract } from "@/application/ports/clock.contract.ts";
 import { FakeClock } from "./clock.ts";
 
 describe("FakeClock", () => {

@@ -5,13 +5,13 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { AgentMemory } from "../../../application/agent-memory.ts";
-import type { DownloadMedia } from "../../../application/download-media.ts";
-import type { GenerateImage } from "../../../application/generate-image.ts";
-import type { Recall } from "../../../application/recall.ts";
-import type { SearchGames } from "../../../application/search-games.ts";
-import type { WebResearch } from "../../../application/web-research.ts";
-import type { MemoryBlockRef, MemoryEdit } from "../../../domain/memory.ts";
+import type { AgentMemory } from "@/application/agent-memory.ts";
+import type { DownloadMedia } from "@/application/download-media.ts";
+import type { GenerateImage } from "@/application/generate-image.ts";
+import type { Recall } from "@/application/recall.ts";
+import type { SearchGames } from "@/application/search-games.ts";
+import type { WebResearch } from "@/application/web-research.ts";
+import type { MemoryBlockRef, MemoryEdit } from "@/domain/memory.ts";
 
 export interface ToolServices {
 	research: WebResearch;

@@ -1,7 +1,8 @@
 /**
  * Regra de dependencia da arquitetura hexagonal (ver AGENTS.md):
  * main -> adapters -> application -> domain. Caminhos relativos a src/;
- * todo arquivo precisa estar numa camada.
+ * todo arquivo precisa estar numa camada. Import entre pastas usa o alias
+ * `@/` (= src/); relativo so `./`, na mesma pasta ou abaixo.
  */
 
 export interface SourceFile {
@@ -75,6 +76,13 @@ function checkInternal(layer: Layer, path: string, target: string): string | und
 	return undefined;
 }
 
+function checkImport(layer: Layer, path: string, specifier: string): string | undefined {
+	if (specifier.startsWith("../")) return "import relativo que sobe de pasta: usar @/";
+	if (specifier.startsWith("@/")) return checkInternal(layer, path, specifier.slice(2));
+	if (specifier.startsWith(".")) return checkInternal(layer, path, resolve(path, specifier));
+	return checkExternal(layer, path, specifier);
+}
+
 export function findViolations(files: SourceFile[]): Violation[] {
 	const violations: Violation[] = [];
 	for (const { path, source } of files) {
@@ -84,9 +92,7 @@ export function findViolations(files: SourceFile[]): Violation[] {
 			continue;
 		}
 		for (const specifier of importsOf(source)) {
-			const rule = specifier.startsWith(".")
-				? checkInternal(layer, path, resolve(path, specifier))
-				: checkExternal(layer, path, specifier);
+			const rule = checkImport(layer, path, specifier);
 			if (rule !== undefined) violations.push({ file: path, specifier, rule });
 		}
 	}

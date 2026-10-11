@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { metricsContract } from "../../../application/ports/metrics.contract.ts";
+import { metricsContract } from "@/application/ports/metrics.contract.ts";
 import { openDatabase } from "./db.ts";
 import { SqliteMetrics } from "./metrics.ts";
 

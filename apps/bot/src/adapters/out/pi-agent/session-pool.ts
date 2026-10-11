@@ -13,8 +13,8 @@ import {
 	SessionManager,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { formatModelRef, type ModelRef } from "../../../domain/model-ref.ts";
-import { canUseHostTools, type Role } from "../../../domain/roles.ts";
+import { formatModelRef, type ModelRef } from "@/domain/model-ref.ts";
+import { canUseHostTools, type Role } from "@/domain/roles.ts";
 import type { WorkerFactory } from "./pi-sub-agents.ts";
 
 /** Tools nativas do pi que mexem na maquina do bot. */

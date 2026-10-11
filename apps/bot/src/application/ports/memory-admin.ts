@@ -1,4 +1,4 @@
-import type { MemoryScope } from "../../domain/memory.ts";
+import type { MemoryScope } from "@/domain/memory.ts";
 
 export interface MemoryBlockRecord {
 	scope: MemoryScope;

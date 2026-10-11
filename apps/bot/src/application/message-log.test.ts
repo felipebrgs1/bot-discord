@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { FakeLogger } from "../test-support/fakes/logger.ts";
-import { FakeMessageStore } from "../test-support/fakes/message-store.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
+import { FakeMessageStore } from "@/test-support/fakes/message-store.ts";
 import { MessageLog } from "./message-log.ts";
 
 const base = { channelId: "c1", authorId: "u1", authorName: "ana", messageId: "m1" };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { FakeLogger } from "../test-support/fakes/logger.ts";
-import { FakeMemoryStore } from "../test-support/fakes/memory-store.ts";
-import { FakeMessageStore } from "../test-support/fakes/message-store.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
+import { FakeMemoryStore } from "@/test-support/fakes/memory-store.ts";
+import { FakeMessageStore } from "@/test-support/fakes/message-store.ts";
 import { AgentMemory } from "./agent-memory.ts";
 import { ReviewMemory } from "./review-memory.ts";
 

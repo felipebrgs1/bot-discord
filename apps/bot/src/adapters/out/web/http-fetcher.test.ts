@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { pageFetcherContract } from "../../../application/ports/page-fetcher.contract.ts";
-import { CONTRACT_ROUTES } from "../../../test-support/fakes/page-fetcher.ts";
+import { pageFetcherContract } from "@/application/ports/page-fetcher.contract.ts";
+import { CONTRACT_ROUTES } from "@/test-support/fakes/page-fetcher.ts";
 import { BROWSER_UA, HttpPageFetcher } from "./http-fetcher.ts";
 
 const openGuard = { assertPublic: async () => undefined };

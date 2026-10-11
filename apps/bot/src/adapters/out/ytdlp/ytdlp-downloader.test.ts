@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Outbox } from "../../../application/ports/outbox.ts";
+import type { Outbox } from "@/application/ports/outbox.ts";
 import { YtDlpDownloader } from "./ytdlp-downloader.ts";
 
 const MB = 1 << 20;

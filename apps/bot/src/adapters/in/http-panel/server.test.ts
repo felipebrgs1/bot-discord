@@ -1,20 +1,20 @@
 import { describe, expect, it } from "bun:test";
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { AgentMemory } from "../../../application/agent-memory.ts";
-import { Panel } from "../../../application/panel.ts";
-import { Persona } from "../../../application/persona.ts";
-import type { ChatAgent, ChatSessions } from "../../../application/ports/chat-agent.ts";
-import { WebChat } from "../../../application/web-chat.ts";
-import { FakeClock } from "../../../test-support/fakes/clock.ts";
-import { FakeConfigStore } from "../../../test-support/fakes/config-store.ts";
-import { FakeLogger } from "../../../test-support/fakes/logger.ts";
-import { FakeMemoryStore } from "../../../test-support/fakes/memory-store.ts";
-import { FakeMessageStore } from "../../../test-support/fakes/message-store.ts";
-import { FakeMetrics } from "../../../test-support/fakes/metrics.ts";
-import { FakeSoulStore } from "../../../test-support/fakes/soul-store.ts";
-import { FakeSubAgents } from "../../../test-support/fakes/sub-agents.ts";
-import { Swarm } from "../../../application/swarm.ts";
+import { AgentMemory } from "@/application/agent-memory.ts";
+import { Panel } from "@/application/panel.ts";
+import { Persona } from "@/application/persona.ts";
+import type { ChatAgent, ChatSessions } from "@/application/ports/chat-agent.ts";
+import { WebChat } from "@/application/web-chat.ts";
+import { FakeClock } from "@/test-support/fakes/clock.ts";
+import { FakeConfigStore } from "@/test-support/fakes/config-store.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
+import { FakeMemoryStore } from "@/test-support/fakes/memory-store.ts";
+import { FakeMessageStore } from "@/test-support/fakes/message-store.ts";
+import { FakeMetrics } from "@/test-support/fakes/metrics.ts";
+import { FakeSoulStore } from "@/test-support/fakes/soul-store.ts";
+import { FakeSubAgents } from "@/test-support/fakes/sub-agents.ts";
+import { Swarm } from "@/application/swarm.ts";
 import { createPanelHandler } from "./server.ts";
 
 function setup(password = "", config = new FakeConfigStore()) {

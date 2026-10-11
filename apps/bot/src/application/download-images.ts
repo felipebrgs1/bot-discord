@@ -1,6 +1,6 @@
 /** Visao: anexos/stickers do chat viram imagens para o modelo. Imagem grande e comprimida; falha isolada so descarta aquela. */
 
-import { type ImageData, MAX_DOWNLOAD_BYTES, MAX_IMAGE_BYTES, MAX_VISION_IMAGES } from "../domain/image.ts";
+import { type ImageData, MAX_DOWNLOAD_BYTES, MAX_IMAGE_BYTES, MAX_VISION_IMAGES } from "@/domain/image.ts";
 import type { ImageShrinker } from "./ports/image-shrinker.ts";
 import type { PageFetcher } from "./ports/page-fetcher.ts";
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { MAX_IMAGE_BYTES } from "../domain/image.ts";
-import { FakeImageShrinker } from "../test-support/fakes/image-shrinker.ts";
-import { type FakeRoute, FakePageFetcher } from "../test-support/fakes/page-fetcher.ts";
+import { MAX_IMAGE_BYTES } from "@/domain/image.ts";
+import { FakeImageShrinker } from "@/test-support/fakes/image-shrinker.ts";
+import { type FakeRoute, FakePageFetcher } from "@/test-support/fakes/page-fetcher.ts";
 import { DownloadImages } from "./download-images.ts";
 
 function setup(routes: [RegExp, FakeRoute][], shrinker = new FakeImageShrinker()) {

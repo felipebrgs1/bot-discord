@@ -12,7 +12,7 @@ import {
 	type MemoryEdit,
 	memoryBlockText,
 	replaceBlock,
-} from "../domain/memory.ts";
+} from "@/domain/memory.ts";
 import type { MemoryStore } from "./ports/memory-store.ts";
 
 const titleOf = (ref: MemoryBlockRef) => (ref.scope === "group" ? "memória do grupo" : `memória da pessoa ${ref.ownerId}`);

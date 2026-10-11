@@ -2,7 +2,7 @@
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import type { HostGuard } from "../../../application/ports/host-guard.ts";
+import type { HostGuard } from "@/application/ports/host-guard.ts";
 
 export function isPrivateIp(ip: string): boolean {
 	if (!isIP(ip)) return true;

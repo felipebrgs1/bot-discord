@@ -1,6 +1,6 @@
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { Outbox } from "../../../application/ports/outbox.ts";
+import type { Outbox } from "@/application/ports/outbox.ts";
 
 /** outbox/<canal>/ no disco. */
 export class FsOutbox implements Outbox {

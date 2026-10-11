@@ -1,6 +1,6 @@
 /** ReplyTarget do Discord: reacoes de andamento, reply + mensagens seguintes, outbox no fim. */
 
-import type { ReplyTarget } from "../../../application/reply-to-message.ts";
+import type { ReplyTarget } from "@/application/reply-to-message.ts";
 
 const WORKING_EMOJI = "⏱️";
 const DONE_EMOJI = "✅";

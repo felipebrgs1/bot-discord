@@ -1,5 +1,5 @@
-import type { ImageData } from "../../domain/image.ts";
-import type { Role } from "../../domain/roles.ts";
+import type { ImageData } from "@/domain/image.ts";
+import type { Role } from "@/domain/roles.ts";
 
 /** Uma tool que o agente usou durante a resposta (painel mostra passo a passo). */
 export interface ToolStep {

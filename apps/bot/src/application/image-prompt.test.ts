@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { IMAGE_PROMPT_INSTRUCTIONS } from "../domain/image.ts";
-import { FakeLogger } from "../test-support/fakes/logger.ts";
-import { FakeSubAgents } from "../test-support/fakes/sub-agents.ts";
+import { IMAGE_PROMPT_INSTRUCTIONS } from "@/domain/image.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
+import { FakeSubAgents } from "@/test-support/fakes/sub-agents.ts";
 import { ImagePromptWriter } from "./image-prompt.ts";
 import type { Turn } from "./persona.ts";
 

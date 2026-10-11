@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import type { TurnReport } from "../../domain/turn.ts";
+import type { TurnReport } from "@/domain/turn.ts";
 import type { MetricsQuery, MetricsSink } from "./metrics.ts";
 
 const turn = (over: Partial<TurnReport> = {}): TurnReport => ({

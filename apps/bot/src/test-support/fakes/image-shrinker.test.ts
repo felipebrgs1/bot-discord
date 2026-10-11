@@ -1,5 +1,5 @@
 import { describe } from "bun:test";
-import { imageShrinkerContract } from "../../application/ports/image-shrinker.contract.ts";
+import { imageShrinkerContract } from "@/application/ports/image-shrinker.contract.ts";
 import { FakeImageShrinker } from "./image-shrinker.ts";
 
 describe("FakeImageShrinker", () => {

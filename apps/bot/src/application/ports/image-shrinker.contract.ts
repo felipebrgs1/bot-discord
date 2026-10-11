@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import type { ImageData } from "../../domain/image.ts";
+import type { ImageData } from "@/domain/image.ts";
 import type { ImageShrinker } from "./image-shrinker.ts";
 
 /**

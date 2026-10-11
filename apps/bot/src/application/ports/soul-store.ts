@@ -1,4 +1,4 @@
-import type { Soul } from "../../domain/soul.ts";
+import type { Soul } from "@/domain/soul.ts";
 
 export interface SoulStore {
 	/** Garante a soul padrao (idempotente). */

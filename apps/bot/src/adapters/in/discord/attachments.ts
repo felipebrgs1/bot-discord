@@ -1,6 +1,6 @@
 /** Onde o Discord guarda imagem: anexos, stickers e capas de embed (propria, respondida, historico). */
 
-import { MAX_VISION_IMAGES } from "../../../domain/image.ts";
+import { MAX_VISION_IMAGES } from "@/domain/image.ts";
 
 export interface AttachmentLike {
 	contentType?: string | null;

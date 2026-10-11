@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ReviewMemory } from "../../../application/review-memory.ts";
+import type { ReviewMemory } from "@/application/review-memory.ts";
 import { startConsolidationLoop } from "./consolidation-loop.ts";
 
 function fakeConsolidate(onCall: (channels: readonly string[]) => Promise<void>): ReviewMemory {

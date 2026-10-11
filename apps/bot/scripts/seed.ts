@@ -9,8 +9,8 @@
  */
 
 import { readFileSync } from "node:fs";
-import { SqliteConfigStore } from "../src/adapters/out/sqlite/config-store.ts";
-import { openDatabase } from "../src/adapters/out/sqlite/db.ts";
+import { SqliteConfigStore } from "@/adapters/out/sqlite/config-store.ts";
+import { openDatabase } from "@/adapters/out/sqlite/db.ts";
 
 const [seedPath, dbPath] = process.argv.slice(2);
 if (!seedPath || !dbPath) {

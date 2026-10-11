@@ -5,8 +5,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { ConfigStore } from "../../../application/ports/config-store.ts";
-import { type BotSettings, getSetting, type SettingEntry, settingsFrom } from "../../../domain/settings.ts";
+import type { ConfigStore } from "@/application/ports/config-store.ts";
+import { type BotSettings, getSetting, type SettingEntry, settingsFrom } from "@/domain/settings.ts";
 
 export class SqliteConfigStore implements ConfigStore {
 	private readonly db: DatabaseSync;

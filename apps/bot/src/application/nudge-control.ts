@@ -3,8 +3,8 @@
  * so admin). Sem opcoes, so mostra o estado. A config vale para todos os canais.
  */
 
-import { IDLE_MIN_RANGE } from "../domain/idle-nudge.ts";
-import { roleOf } from "../domain/roles.ts";
+import { IDLE_MIN_RANGE } from "@/domain/idle-nudge.ts";
+import { roleOf } from "@/domain/roles.ts";
 import type { ConfigStore } from "./ports/config-store.ts";
 
 export interface NudgeControlDeps {

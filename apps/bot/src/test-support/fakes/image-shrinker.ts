@@ -1,5 +1,5 @@
-import type { ImageShrinker } from "../../application/ports/image-shrinker.ts";
-import type { ImageData } from "../../domain/image.ts";
+import type { ImageShrinker } from "@/application/ports/image-shrinker.ts";
+import type { ImageData } from "@/domain/image.ts";
 
 /** Imagem "comprimida" padrao: 10 bytes em JPEG. Sem `shrunk`, nada e comprimivel. */
 export const SHRUNK_JPEG: ImageData = { data: "AAAAAAAAAAAAAA==", mimeType: "image/jpeg" };

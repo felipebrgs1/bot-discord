@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { ToolStep } from "../../../application/ports/chat-agent.ts";
-import type { SubTask } from "../../../application/ports/sub-agents.ts";
-import { FakeMetrics } from "../../../test-support/fakes/metrics.ts";
+import type { ToolStep } from "@/application/ports/chat-agent.ts";
+import type { SubTask } from "@/application/ports/sub-agents.ts";
+import { FakeMetrics } from "@/test-support/fakes/metrics.ts";
 import { PiSubAgents, type WorkerFactory } from "./pi-sub-agents.ts";
 
 interface Created {

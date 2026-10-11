@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { GameHit } from "../domain/game.ts";
+import type { GameHit } from "@/domain/game.ts";
 import type { GameCatalog } from "./ports/game-catalog.ts";
 import { SearchGames } from "./search-games.ts";
 

@@ -6,8 +6,8 @@ import type {
 	MetricsTotals,
 	ModelMetrics,
 	RecentTurn,
-} from "../../../application/ports/metrics.ts";
-import type { TurnReport } from "../../../domain/turn.ts";
+} from "@/application/ports/metrics.ts";
+import type { TurnReport } from "@/domain/turn.ts";
 
 const TOTALS = `COUNT(*) AS requests,
   COALESCE(SUM(status <> 'success'),0) AS failures,

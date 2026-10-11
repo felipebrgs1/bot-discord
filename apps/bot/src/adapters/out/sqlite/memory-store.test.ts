@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { memoryStoreContract } from "../../../application/ports/memory-store.contract.ts";
+import { memoryStoreContract } from "@/application/ports/memory-store.contract.ts";
 import { openDatabase } from "./db.ts";
 import { SqliteMemoryStore } from "./memory-store.ts";
 

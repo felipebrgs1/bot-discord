@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { FakeLogger } from "../test-support/fakes/logger.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
 import { DownloadMedia } from "./download-media.ts";
 import type { MediaDownloader, MediaResult } from "./ports/media-downloader.ts";
 

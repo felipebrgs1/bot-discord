@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { defaultSettings, type NudgeConfig } from "../domain/settings.ts";
-import { FakeClock } from "../test-support/fakes/clock.ts";
-import { FakeLogger } from "../test-support/fakes/logger.ts";
-import { FakeMessageStore } from "../test-support/fakes/message-store.ts";
-import { FakeSubAgents } from "../test-support/fakes/sub-agents.ts";
+import { defaultSettings, type NudgeConfig } from "@/domain/settings.ts";
+import { FakeClock } from "@/test-support/fakes/clock.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
+import { FakeMessageStore } from "@/test-support/fakes/message-store.ts";
+import { FakeSubAgents } from "@/test-support/fakes/sub-agents.ts";
 import { IdleNudge } from "./idle-nudge.ts";
 
 const MIN = 60_000;

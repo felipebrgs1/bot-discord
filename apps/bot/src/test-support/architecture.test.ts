@@ -39,11 +39,11 @@ describe("findViolations: domain", () => {
 
 	it("barra import de application, adapters e main", () => {
 		expect(
-			specifiersOf([file("domain/reply.ts", "../application/handle.ts", "../adapters/out/sqlite/db.ts", "../main/start.ts")]),
+			specifiersOf([file("domain/reply.ts", "@/application/handle.ts", "@/adapters/out/sqlite/db.ts", "@/main/start.ts")]),
 		).toEqual([
-			"domain/reply.ts -> ../application/handle.ts",
-			"domain/reply.ts -> ../adapters/out/sqlite/db.ts",
-			"domain/reply.ts -> ../main/start.ts",
+			"domain/reply.ts -> @/application/handle.ts",
+			"domain/reply.ts -> @/adapters/out/sqlite/db.ts",
+			"domain/reply.ts -> @/main/start.ts",
 		]);
 	});
 
@@ -59,14 +59,14 @@ describe("findViolations: domain", () => {
 describe("findViolations: application", () => {
 	it("aceita domain e a propria application, inclusive ports", () => {
 		expect(
-			specifiersOf([file("application/handle.ts", "../domain/roles.ts", "./ports/chat-agent.ts", "./other.ts")]),
+			specifiersOf([file("application/handle.ts", "@/domain/roles.ts", "./ports/chat-agent.ts", "./other.ts")]),
 		).toEqual([]);
 	});
 
 	it("barra adapters, main, node:* e npm", () => {
 		expect(
 			specifiersOf([
-				file("application/handle.ts", "../adapters/in/discord/gateway.ts", "../main/start.ts", "node:sqlite", "discord.js"),
+				file("application/handle.ts", "@/adapters/in/discord/gateway.ts", "@/main/start.ts", "node:sqlite", "discord.js"),
 			]),
 		).toHaveLength(4);
 	});
@@ -78,8 +78,8 @@ describe("findViolations: adapters", () => {
 			specifiersOf([
 				file(
 					"adapters/out/sqlite/memory-store.ts",
-					"../../../domain/memory.ts",
-					"../../../application/ports/memory-store.ts",
+					"@/domain/memory.ts",
+					"@/application/ports/memory-store.ts",
 					"./db.ts",
 					"node:sqlite",
 					"@earendil-works/pi-ai",
@@ -91,17 +91,17 @@ describe("findViolations: adapters", () => {
 	it("barra outro adapter, inclusive entre in e out", () => {
 		expect(
 			specifiersOf([
-				file("adapters/out/sqlite/memory-store.ts", "../web/fetcher.ts"),
-				file("adapters/in/discord/gateway.ts", "../../out/sqlite/db.ts"),
+				file("adapters/out/sqlite/memory-store.ts", "@/adapters/out/web/fetcher.ts"),
+				file("adapters/in/discord/gateway.ts", "@/adapters/out/sqlite/db.ts"),
 			]),
 		).toEqual([
-			"adapters/out/sqlite/memory-store.ts -> ../web/fetcher.ts",
-			"adapters/in/discord/gateway.ts -> ../../out/sqlite/db.ts",
+			"adapters/out/sqlite/memory-store.ts -> @/adapters/out/web/fetcher.ts",
+			"adapters/in/discord/gateway.ts -> @/adapters/out/sqlite/db.ts",
 		]);
 	});
 
 	it("barra main", () => {
-		expect(specifiersOf([file("adapters/in/discord/gateway.ts", "../../../main/start.ts")])).toHaveLength(1);
+		expect(specifiersOf([file("adapters/in/discord/gateway.ts", "@/main/start.ts")])).toHaveLength(1);
 	});
 });
 
@@ -109,24 +109,24 @@ describe("findViolations: test-support e main", () => {
 	it("so teste importa test-support", () => {
 		expect(
 			specifiersOf([
-				file("application/handle.test.ts", "../test-support/fakes/memory-store.ts"),
-				file("application/handle.ts", "../test-support/fakes/memory-store.ts"),
+				file("application/handle.test.ts", "@/test-support/fakes/memory-store.ts"),
+				file("application/handle.ts", "@/test-support/fakes/memory-store.ts"),
 			]),
-		).toEqual(["application/handle.ts -> ../test-support/fakes/memory-store.ts"]);
+		).toEqual(["application/handle.ts -> @/test-support/fakes/memory-store.ts"]);
 	});
 
 	it("test-support importa domain e application, nunca adapters", () => {
 		expect(
 			specifiersOf([
-				file("test-support/fakes/memory-store.ts", "../../application/ports/memory-store.ts", "../../domain/memory.ts"),
-				file("test-support/fakes/db.ts", "../../adapters/out/sqlite/db.ts"),
+				file("test-support/fakes/memory-store.ts", "@/application/ports/memory-store.ts", "@/domain/memory.ts"),
+				file("test-support/fakes/db.ts", "@/adapters/out/sqlite/db.ts"),
 			]),
-		).toEqual(["test-support/fakes/db.ts -> ../../adapters/out/sqlite/db.ts"]);
+		).toEqual(["test-support/fakes/db.ts -> @/adapters/out/sqlite/db.ts"]);
 	});
 
 	it("main importa qualquer camada", () => {
 		expect(
-			specifiersOf([file("main/start.ts", "../adapters/in/discord/gateway.ts", "../application/handle.ts", "node:path")]),
+			specifiersOf([file("main/start.ts", "@/adapters/in/discord/gateway.ts", "@/application/handle.ts", "node:path")]),
 		).toEqual([]);
 	});
 });
@@ -140,7 +140,18 @@ describe("findViolations: fora das camadas", () => {
 	});
 
 	it("import que sai das camadas e violacao", () => {
-		expect(specifiersOf([file("domain/a.ts", "../legado.ts")])).toEqual(["domain/a.ts -> ../legado.ts"]);
+		expect(specifiersOf([file("domain/a.ts", "@/legado.ts")])).toEqual(["domain/a.ts -> @/legado.ts"]);
+	});
+});
+
+describe("findViolations: caminho de import", () => {
+	it("barra import relativo que sobe de pasta: entre pastas vai por @/", () => {
+		expect(
+			specifiersOf([
+				file("application/handle.ts", "../domain/roles.ts", "./ports/chat-agent.ts"),
+				file("adapters/out/sqlite/memory-store.ts", "./db.ts", "@/adapters/out/sqlite/schema.ts"),
+			]),
+		).toEqual(["application/handle.ts -> ../domain/roles.ts"]);
 	});
 });
 

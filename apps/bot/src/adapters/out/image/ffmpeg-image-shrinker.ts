@@ -7,8 +7,8 @@ import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ImageShrinker } from "../../../application/ports/image-shrinker.ts";
-import type { ImageData } from "../../../domain/image.ts";
+import type { ImageShrinker } from "@/application/ports/image-shrinker.ts";
+import type { ImageData } from "@/domain/image.ts";
 
 /** [lado maximo em px, qualidade mjpeg (2 melhor, 31 pior)], do mais nitido ao mais magro. */
 const LADDER: readonly (readonly [number, number])[] = [

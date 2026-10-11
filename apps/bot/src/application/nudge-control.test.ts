@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { FakeConfigStore } from "../test-support/fakes/config-store.ts";
+import { FakeConfigStore } from "@/test-support/fakes/config-store.ts";
 import { NudgeControl } from "./nudge-control.ts";
 
 function setup() {

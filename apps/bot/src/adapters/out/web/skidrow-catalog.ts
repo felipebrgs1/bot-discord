@@ -3,11 +3,11 @@
  * catalogo da Steam para corrigir nome grudado ("thesims" -> "The Sims 4").
  */
 
-import type { GameCatalog } from "../../../application/ports/game-catalog.ts";
-import type { PageFetcher } from "../../../application/ports/page-fetcher.ts";
-import { type GameHit, normalizeGameName } from "../../../domain/game.ts";
-import { unescapeHtml } from "../../../domain/html-text.ts";
-import { parseHttpUrl } from "../../../domain/http-url.ts";
+import type { GameCatalog } from "@/application/ports/game-catalog.ts";
+import type { PageFetcher } from "@/application/ports/page-fetcher.ts";
+import { type GameHit, normalizeGameName } from "@/domain/game.ts";
+import { unescapeHtml } from "@/domain/html-text.ts";
+import { parseHttpUrl } from "@/domain/http-url.ts";
 
 const SEARCH_BASE = "https://www.skidrowreloaded.com/";
 

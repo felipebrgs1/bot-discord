@@ -1,4 +1,4 @@
-import { searchTerms } from "../../../domain/search-terms.ts";
+import { searchTerms } from "@/domain/search-terms.ts";
 
 /** Expressao MATCH do FTS5: qualquer termo, por prefixo ('' = nada a buscar). */
 export function ftsMatch(text: string): string {

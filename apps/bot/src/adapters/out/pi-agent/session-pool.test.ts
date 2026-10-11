@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { Role } from "../../../domain/roles.ts";
+import type { Role } from "@/domain/roles.ts";
 import { botResourceLoader, excludedToolsFor, resolveModel, type SessionFactory, SessionPool } from "./session-pool.ts";
 
 function stubSession(answer: string, calls: unknown[][] = []): AgentSession {

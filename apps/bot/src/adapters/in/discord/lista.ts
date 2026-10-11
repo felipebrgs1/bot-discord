@@ -1,7 +1,7 @@
 /** Apresentacao do /lista no Discord: slash command, embed e botoes 1/2/3. */
 
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import type { GameHit } from "../../../domain/game.ts";
+import type { GameHit } from "@/domain/game.ts";
 
 export const LISTA_COMMAND_JSON = new SlashCommandBuilder()
 	.setName("lista")

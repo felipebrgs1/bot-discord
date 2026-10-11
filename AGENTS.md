@@ -151,6 +151,7 @@ Portas de saida: `ChatAgent`, `ChatSessions`, `Clock`, `ConfigStore`, `GameCatal
 
 - TypeScript estrito. Sem `any`; se for inevitavel, comentar o motivo.
 - Imports so no topo. Sem `await import()` nem `import("pkg").Type`.
+- Import entre pastas pelo alias `@/` (= `src/`, nos dois apps): `@/domain/memory.ts`, nunca `../`. Relativo so `./`, na mesma pasta ou abaixo. O teste de arquitetura barra `../` no bot.
 - So sintaxe apagavel (`erasableSyntaxOnly`): sem `enum`, `namespace`, parameter properties. Campos explicitos + atribuicao no construtor.
 - `tsconfig.json` e estrito (`noUncheckedIndexedAccess`, `noPropertyAccessFromIndexSignature`, `noUnused*`...). Nao afrouxar flag para passar no check.
 - APIs do Bun (`Bun.*`, `bun:sqlite`) so em `adapters` e `main`.

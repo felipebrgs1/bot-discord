@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { FakeChatAgent } from "../test-support/fakes/chat-agent.ts";
-import { FakeClock } from "../test-support/fakes/clock.ts";
-import { FakeLogger } from "../test-support/fakes/logger.ts";
-import { FakeReplyTarget } from "../test-support/fakes/reply-target.ts";
+import { FakeChatAgent } from "@/test-support/fakes/chat-agent.ts";
+import { FakeClock } from "@/test-support/fakes/clock.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
+import { FakeReplyTarget } from "@/test-support/fakes/reply-target.ts";
 import type { Turn } from "./persona.ts";
 import { type IncomingMessage, type ReplySettings, ReplyToMessage } from "./reply-to-message.ts";
 

@@ -1,4 +1,4 @@
-import type { BinaryPage, PageFetcher } from "../../application/ports/page-fetcher.ts";
+import type { BinaryPage, PageFetcher } from "@/application/ports/page-fetcher.ts";
 
 export interface FakeRoute {
 	status?: number;

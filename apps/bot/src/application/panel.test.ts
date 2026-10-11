@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { MEMORY_LIMITS } from "../domain/memory.ts";
-import { DEFAULT_SOUL } from "../domain/soul.ts";
-import { FakeConfigStore } from "../test-support/fakes/config-store.ts";
-import { FakeMemoryStore } from "../test-support/fakes/memory-store.ts";
-import { FakeMetrics } from "../test-support/fakes/metrics.ts";
-import { FakeSoulStore } from "../test-support/fakes/soul-store.ts";
+import { MEMORY_LIMITS } from "@/domain/memory.ts";
+import { DEFAULT_SOUL } from "@/domain/soul.ts";
+import { FakeConfigStore } from "@/test-support/fakes/config-store.ts";
+import { FakeMemoryStore } from "@/test-support/fakes/memory-store.ts";
+import { FakeMetrics } from "@/test-support/fakes/metrics.ts";
+import { FakeSoulStore } from "@/test-support/fakes/soul-store.ts";
 import { AgentMemory } from "./agent-memory.ts";
 import { Panel } from "./panel.ts";
 import type { LogFeed } from "./ports/log-feed.ts";

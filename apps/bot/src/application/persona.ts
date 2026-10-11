@@ -1,4 +1,4 @@
-import { MEMORY_GUIDANCE, MEMORY_LIMITS, memoryBlockText, turnText } from "../domain/memory.ts";
+import { MEMORY_GUIDANCE, MEMORY_LIMITS, memoryBlockText, turnText } from "@/domain/memory.ts";
 import type { MemoryStore } from "./ports/memory-store.ts";
 import type { MessageStore } from "./ports/message-store.ts";
 import type { SoulStore } from "./ports/soul-store.ts";

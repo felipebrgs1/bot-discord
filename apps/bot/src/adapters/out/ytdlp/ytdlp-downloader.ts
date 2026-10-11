@@ -7,9 +7,9 @@
 import { execFile } from "node:child_process";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { MediaDownloader, MediaResult } from "../../../application/ports/media-downloader.ts";
-import type { Outbox } from "../../../application/ports/outbox.ts";
-import { MEDIA_MIN_HEIGHT, type MediaFormat, pickMediaFormat } from "../../../domain/media-quality.ts";
+import type { MediaDownloader, MediaResult } from "@/application/ports/media-downloader.ts";
+import type { Outbox } from "@/application/ports/outbox.ts";
+import { MEDIA_MIN_HEIGHT, type MediaFormat, pickMediaFormat } from "@/domain/media-quality.ts";
 
 const MAX_BYTES = 20 << 20;
 /** Teto do download bruto no seletor de reserva (depois recomprime). */

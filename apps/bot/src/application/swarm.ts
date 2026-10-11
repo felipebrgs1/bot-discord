@@ -3,7 +3,7 @@
  * roda num worker com as tools do bot, todos ao mesmo tempo.
  */
 
-import { parsePlan, SWARM_PLANNER_PROMPT, SWARM_WORKER_PROMPT, type SwarmResult } from "../domain/swarm.ts";
+import { parsePlan, SWARM_PLANNER_PROMPT, SWARM_WORKER_PROMPT, type SwarmResult } from "@/domain/swarm.ts";
 import type { ToolStep } from "./ports/chat-agent.ts";
 import type { SubAgents } from "./ports/sub-agents.ts";
 

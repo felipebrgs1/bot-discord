@@ -9,11 +9,11 @@ import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join, normalize, sep } from "node:path";
 import type * as Api from "@elmatadore/api";
-import type { Panel } from "../../../application/panel.ts";
-import type { Logger } from "../../../application/ports/logger.ts";
-import type { MetricsTotals } from "../../../application/ports/metrics.ts";
-import { WebChat } from "../../../application/web-chat.ts";
-import type { StoredMessage } from "../../../domain/message.ts";
+import type { Panel } from "@/application/panel.ts";
+import type { Logger } from "@/application/ports/logger.ts";
+import type { MetricsTotals } from "@/application/ports/metrics.ts";
+import { WebChat } from "@/application/web-chat.ts";
+import type { StoredMessage } from "@/domain/message.ts";
 
 export interface PanelServerDeps {
 	panel: Panel;

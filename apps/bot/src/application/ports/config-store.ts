@@ -1,4 +1,4 @@
-import type { BotSettings } from "../../domain/settings.ts";
+import type { BotSettings } from "@/domain/settings.ts";
 
 /** Config da aplicacao (segredos ficam fora: so no ambiente, lidos pelo main). */
 export interface ConfigStore {

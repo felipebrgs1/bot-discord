@@ -1,6 +1,6 @@
 /** WebSearch pela API v2 do Firecrawl (plano free com creditos); noticias e web, Brasil. */
 
-import type { WebSearch } from "../../../application/ports/web-search.ts";
+import type { WebSearch } from "@/application/ports/web-search.ts";
 
 export interface FirecrawlSearchOptions {
 	apiKey: string;

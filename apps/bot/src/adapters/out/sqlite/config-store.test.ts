@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { configStoreContract } from "../../../application/ports/config-store.contract.ts";
+import { configStoreContract } from "@/application/ports/config-store.contract.ts";
 import { SqliteConfigStore } from "./config-store.ts";
 import { openDatabase } from "./db.ts";
 

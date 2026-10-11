@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { FakeLogger } from "../test-support/fakes/logger.ts";
-import { FakeOutbox } from "../test-support/fakes/outbox.ts";
+import { FakeLogger } from "@/test-support/fakes/logger.ts";
+import { FakeOutbox } from "@/test-support/fakes/outbox.ts";
 import { OutboxDelivery } from "./outbox-delivery.ts";
 
 describe("OutboxDelivery", () => {

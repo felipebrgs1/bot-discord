@@ -6,7 +6,7 @@
  * Falha do modelo nao avanca o cursor (o lote e tentado de novo depois).
  */
 
-import { parseReviewEdits, reviewPrompt } from "../domain/memory.ts";
+import { parseReviewEdits, reviewPrompt } from "@/domain/memory.ts";
 import type { AgentMemory } from "./agent-memory.ts";
 import type { LearningExtractor } from "./ports/learning-extractor.ts";
 import type { Logger } from "./ports/logger.ts";

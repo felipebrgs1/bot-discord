@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { FakePageFetcher } from "../test-support/fakes/page-fetcher.ts";
+import { FakePageFetcher } from "@/test-support/fakes/page-fetcher.ts";
 import type { WebSearch } from "./ports/web-search.ts";
 import { WebResearch } from "./web-research.ts";
 

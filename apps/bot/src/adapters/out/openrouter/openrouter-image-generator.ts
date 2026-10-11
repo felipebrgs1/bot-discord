@@ -3,8 +3,8 @@
  * A imagem volta em data[].b64_json, com media_type opcional.
  */
 
-import type { ImageGenerator } from "../../../application/ports/image-generator.ts";
-import type { ImageData } from "../../../domain/image.ts";
+import type { ImageGenerator } from "@/application/ports/image-generator.ts";
+import type { ImageData } from "@/domain/image.ts";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/images";
 const TIMEOUT_MS = 180_000;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { MEMORY_LIMITS } from "../domain/memory.ts";
-import { FakeMemoryStore } from "../test-support/fakes/memory-store.ts";
+import { MEMORY_LIMITS } from "@/domain/memory.ts";
+import { FakeMemoryStore } from "@/test-support/fakes/memory-store.ts";
 import { AgentMemory } from "./agent-memory.ts";
 
 const group = { scope: "group" as const, ownerId: "c1" };

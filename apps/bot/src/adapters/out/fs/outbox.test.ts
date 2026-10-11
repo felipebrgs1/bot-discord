@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { outboxContract } from "../../../application/ports/outbox.contract.ts";
+import { outboxContract } from "@/application/ports/outbox.contract.ts";
 import { FsOutbox } from "./outbox.ts";
 
 const dirs: string[] = [];
