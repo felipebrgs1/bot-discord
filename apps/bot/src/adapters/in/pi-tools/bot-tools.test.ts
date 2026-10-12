@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { AgentMemory } from "@/application/agent-memory.ts";
+import { Decide } from "@/application/decide.ts";
 import { DownloadMedia } from "@/application/download-media.ts";
 import { GenerateImage } from "@/application/generate-image.ts";
+import type { Judgment } from "@/application/ports/judge.ts";
 import type { MediaResult } from "@/application/ports/media-downloader.ts";
 import { Recall } from "@/application/recall.ts";
 import { SearchGames } from "@/application/search-games.ts";
@@ -22,6 +24,7 @@ function setup() {
 	const searches: string[] = [];
 	const outbox = new FakeOutbox();
 	const prompts: string[] = [];
+	const judgments: Judgment[] = [];
 	const tools = botTools(
 		{
 			research: new WebResearch(
@@ -62,6 +65,14 @@ function setup() {
 					return "magnet:?xt=urn:btih:ABC";
 				},
 			}),
+			decide: new Decide({
+				judge: async (j) => {
+					judgments.push(j);
+					return j.kind === "odds"
+						? { kind: "odds", p: 0.9 }
+						: { kind: "choice", pick: "Paprika", confidence: 0.7, probabilities: [{ option: "Paprika", p: 1 }] };
+				},
+			}),
 		},
 		"c1",
 	);
@@ -74,11 +85,11 @@ function setup() {
 		const r = await byName(name).execute("t", params as never, undefined as never, undefined as never, {} as never);
 		return r.content[0]?.type === "text" ? r.content[0].text : "";
 	};
-	return { tools, messages, memories, downloads, searches, outbox, prompts, run };
+	return { tools, messages, memories, downloads, searches, outbox, prompts, judgments, run };
 }
 
 describe("botTools", () => {
-	it("as 8 tools do bot, nessa ordem", () => {
+	it("as 10 tools do bot, nessa ordem", () => {
 		expect(setup().tools.map((t) => t.name)).toEqual([
 			"web_search",
 			"web_fetch",
@@ -88,6 +99,8 @@ describe("botTools", () => {
 			"memory",
 			"lista",
 			"magnet",
+			"choose",
+			"yes_or_no",
 		]);
 	});
 
@@ -158,5 +171,18 @@ describe("botTools", () => {
 		expect(await run("magnet", { url: "https://s/4" })).toBe("magnet:?xt=urn:btih:ABC");
 		expect(await run("magnet", { url: " " })).toBe("erro: informe a URL da postagem (uma das 3 listadas)");
 		expect(await run("magnet", { url: "https://s/sem" })).toBe("erro: magnet não encontrado na página");
+	});
+
+	it("choose e yes_or_no julgam a pergunta e devolvem o veredito", async () => {
+		const { run, judgments } = setup();
+		expect(await run("choose", { question: "Which movie?", options: ["Paprika", "Inception"], context: "Ana hates anime" })).toStartWith(
+			"veredito: Paprika",
+		);
+		expect(await run("yes_or_no", { question: "Gym today?" })).toStartWith("veredito: sim (90%)");
+		expect(judgments).toEqual([
+			{ kind: "choice", question: "Which movie?", options: ["Paprika", "Inception"], context: "Ana hates anime" },
+			{ kind: "odds", question: "Gym today?", context: "" },
+		]);
+		expect(await run("choose", { question: "q", options: ["a"] })).toBe("erro: informe pelo menos 2 opções diferentes");
 	});
 });

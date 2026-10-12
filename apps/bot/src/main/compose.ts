@@ -32,8 +32,10 @@ import { FfmpegImageShrinker } from "@/adapters/out/image/ffmpeg-image-shrinker.
 import { HttpPageFetcher } from "@/adapters/out/web/http-fetcher.ts";
 import { SkidrowCatalog } from "@/adapters/out/web/skidrow-catalog.ts";
 import { TavilySearch } from "@/adapters/out/web/tavily-search.ts";
+import { TypeSafeJudge } from "@/adapters/out/typesafe/typesafe-judge.ts";
 import { YtDlpDownloader } from "@/adapters/out/ytdlp/ytdlp-downloader.ts";
 import { AgentMemory } from "@/application/agent-memory.ts";
+import { Decide } from "@/application/decide.ts";
 import { DownloadImages } from "@/application/download-images.ts";
 import { DownloadMedia } from "@/application/download-media.ts";
 import { GenerateImage } from "@/application/generate-image.ts";
@@ -141,6 +143,8 @@ export function compose(opts: ComposeOptions) {
 		memory,
 		images: new GenerateImage(imageGenerator, outbox, systemClock, log),
 		games,
+		// Decisao (choose, yes_or_no): TypeSafe; sem chave a tool avisa o que falta.
+		decide: new Decide(env("TYPESAFE_API_KEY") ? new TypeSafeJudge({ apiKey: env("TYPESAFE_API_KEY"), http }) : undefined),
 	};
 	const drawing = new GenerateImage(imageGenerator, outbox, systemClock, log,
 	);

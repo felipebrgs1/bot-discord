@@ -124,7 +124,7 @@ describe("compose", () => {
 		app.db.close();
 	});
 
-	it("conversa recebe as 8 tools do bot", () => {
+	it("conversa recebe as 10 tools do bot", () => {
 		const app = build();
 		expect(app.tools("c1").map((t) => t.name)).toEqual([
 			"web_search",
@@ -135,6 +135,8 @@ describe("compose", () => {
 			"memory",
 			"lista",
 			"magnet",
+			"choose",
+			"yes_or_no",
 		]);
 		app.db.close();
 	});
@@ -255,6 +257,40 @@ describe("compose", () => {
 		expect(first?.type === "text" ? first.text : "").toBe(
 			"erro na pesquisa: nenhum buscador configurado (TAVILY_API_KEY ou FIRECRAWL_API_KEY)",
 		);
+		app.db.close();
+	});
+
+	it("yes_or_no consulta o TypeSafe com a TYPESAFE_API_KEY", async () => {
+		const root = rootWith("sou um bot");
+		const auth: string[] = [];
+		const http = (async (url: string | URL | Request, init?: RequestInit) => {
+			auth.push(`${String(url)} ${(init?.headers as Record<string, string>)["Authorization"]}`);
+			return new Response(JSON.stringify({ answers: { verdict: { type: "noul", noul: 0.82 } } }));
+		}) as typeof fetch;
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { TYPESAFE_API_KEY: "ts-k" },
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http,
+		});
+		const tool = app.tools("c1").find((t) => t.name === "yes_or_no");
+		const result = await tool?.execute("t", { question: "Gym today?" } as never, undefined as never, undefined as never, {} as never);
+		const first = result?.content[0];
+		expect(first?.type === "text" ? first.text : "").toStartWith("veredito: sim (82%)");
+		expect(auth).toEqual(["https://api.typesafe.ai/v1/systemone Bearer ts-k"]);
+		app.db.close();
+	});
+
+	it("choose sem TYPESAFE_API_KEY avisa qual variavel falta", async () => {
+		const app = build();
+		const tool = app.tools("c1").find((t) => t.name === "choose");
+		const result = await tool?.execute("t", { question: "q", options: ["a", "b"] } as never, undefined as never, undefined as never, {} as never);
+		const first = result?.content[0];
+		expect(first?.type === "text" ? first.text : "").toBe("erro: decisão não configurada (TYPESAFE_API_KEY)");
 		app.db.close();
 	});
 

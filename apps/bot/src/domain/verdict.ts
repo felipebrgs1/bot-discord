@@ -1,0 +1,49 @@
+/**
+ * Veredito de um modelo de decisao: escolha entre opcoes (com a distribuicao)
+ * ou probabilidade de "sim". Validacao das opcoes e texto para o agente repassar.
+ */
+
+export type Verdict =
+	| { kind: "choice"; pick: string; confidence: number; probabilities: { option: string; p: number }[] }
+	| { kind: "odds"; p: number };
+
+/** Teto de opcoes numa escolha (legibilidade no Discord). */
+export const MAX_OPTIONS = 10;
+
+/** Opcoes aparadas e sem repeticao; string = erro para o modelo. */
+export function parseOptions(options: string[]): string[] | string {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const raw of options) {
+		const option = raw.trim();
+		const key = option.toLowerCase();
+		if (!option || seen.has(key)) continue;
+		seen.add(key);
+		out.push(option);
+	}
+	if (out.length < 2) return "informe pelo menos 2 opções diferentes";
+	if (out.length > MAX_OPTIONS) return `no máximo ${MAX_OPTIONS} opções`;
+	return out;
+}
+
+const percent = (p: number) => `${Math.round(p * 100)}%`;
+const bar = (p: number) => {
+	const filled = Math.round(p * 10);
+	return "█".repeat(filled) + "░".repeat(10 - filled);
+};
+
+/** Texto do veredito com barras num bloco de codigo (monoespacado no Discord). */
+export function formatVerdict(verdict: Verdict): string {
+	if (verdict.kind === "odds") {
+		const label = verdict.p >= 0.65 ? "sim" : verdict.p <= 0.35 ? "não" : "dividido";
+		return [`veredito: ${label} (${percent(verdict.p)})`, "```", `${bar(verdict.p)} ${percent(verdict.p)}`, "```"].join("\n");
+	}
+	const rows = [...verdict.probabilities].sort((a, b) => b.p - a.p);
+	const width = Math.max(...rows.map((r) => r.option.length));
+	return [
+		`veredito: ${verdict.pick} (confiança ${percent(verdict.confidence)})`,
+		"```",
+		...rows.map((r) => `${r.option.padEnd(width)} ${bar(r.p)} ${percent(r.p)}`),
+		"```",
+	].join("\n");
+}

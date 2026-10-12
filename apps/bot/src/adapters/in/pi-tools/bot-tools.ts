@@ -6,6 +6,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentMemory } from "@/application/agent-memory.ts";
+import type { Decide } from "@/application/decide.ts";
 import type { DownloadMedia } from "@/application/download-media.ts";
 import type { GenerateImage } from "@/application/generate-image.ts";
 import type { Recall } from "@/application/recall.ts";
@@ -20,11 +21,16 @@ export interface ToolServices {
 	memory: AgentMemory;
 	images: GenerateImage;
 	games: SearchGames;
+	decide: Decide;
 }
 
 function textResult(text: string): { content: [{ type: "text"; text: string }]; details: Record<string, never> } {
 	return { content: [{ type: "text", text }], details: {} };
 }
+
+/** O Jev foi treinado em ingles e erra mais em portugues. */
+const JEV_HINT =
+	"Escreva question e context em inglês (o modelo de decisão erra mais em português). No context vai o que se sabe de quem pergunta e do grupo que pesa na decisão. Repasse o veredito ao usuário com o bloco de barras e comente do seu jeito.";
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -59,7 +65,7 @@ function memoryRequest(channelId: string, p: MemoryParams): { ref: MemoryBlockRe
 
 /** Tools de toda conversa (user e admin); admin ganha as nativas do pi por fora. */
 export function botTools(services: ToolServices, channelId: string): ToolDefinition[] {
-	const { research, media, recall, memory, images, games } = services;
+	const { research, media, recall, memory, images, games, decide } = services;
 	return [
 		defineTool({
 			name: "web_search",
@@ -172,6 +178,27 @@ export function botTools(services: ToolServices, channelId: string): ToolDefinit
 					return textResult(`erro: ${errorText(err)}`);
 				}
 			},
+		}),
+		defineTool({
+			name: "choose",
+			label: "Escolher",
+			description: `Escolhe entre opções ("paprika ou inception?", "pizza, sushi ou hambúrguer?") com um modelo de decisão que devolve a opção vencedora e a probabilidade de cada uma. ${JEV_HINT}`,
+			parameters: Type.Object({
+				question: Type.String({ description: "A pergunta, em inglês" }),
+				options: Type.Array(Type.String(), { description: "De 2 a 10 opções, como o usuário escreveu" }),
+				context: Type.Optional(Type.String({ description: "Contexto relevante, em inglês" })),
+			}),
+			execute: async (_id, p) => textResult(await decide.choose(p.question ?? "", p.options ?? [], p.context)),
+		}),
+		defineTool({
+			name: "yes_or_no",
+			label: "Sim ou não",
+			description: `Responde pergunta de sim ou não ("devo ir pra academia hoje?") com um modelo de decisão que devolve a probabilidade de sim, de 0 a 1. ${JEV_HINT}`,
+			parameters: Type.Object({
+				question: Type.String({ description: "A pergunta de sim ou não, em inglês" }),
+				context: Type.Optional(Type.String({ description: "Contexto relevante, em inglês" })),
+			}),
+			execute: async (_id, p) => textResult(await decide.odds(p.question ?? "", p.context)),
 		}),
 	];
 }
