@@ -25,6 +25,14 @@ function setup() {
 	const outbox = new FakeOutbox();
 	const prompts: string[] = [];
 	const judgments: Judgment[] = [];
+	const decide = new Decide({
+		judge: async (j) => {
+			judgments.push(j);
+			return j.kind === "odds"
+				? { kind: "odds", p: 0.9 }
+				: { kind: "choice", pick: "Paprika", confidence: 0.7, probabilities: [{ option: "Paprika", p: 1 }] };
+		},
+	});
 	const tools = botTools(
 		{
 			research: new WebResearch(
@@ -65,14 +73,7 @@ function setup() {
 					return "magnet:?xt=urn:btih:ABC";
 				},
 			}),
-			decide: new Decide({
-				judge: async (j) => {
-					judgments.push(j);
-					return j.kind === "odds"
-						? { kind: "odds", p: 0.9 }
-						: { kind: "choice", pick: "Paprika", confidence: 0.7, probabilities: [{ option: "Paprika", p: 1 }] };
-				},
-			}),
+			decide,
 		},
 		"c1",
 	);
@@ -85,7 +86,7 @@ function setup() {
 		const r = await byName(name).execute("t", params as never, undefined as never, undefined as never, {} as never);
 		return r.content[0]?.type === "text" ? r.content[0].text : "";
 	};
-	return { tools, messages, memories, downloads, searches, outbox, prompts, judgments, run };
+	return { tools, messages, memories, downloads, searches, outbox, prompts, judgments, decide, run };
 }
 
 describe("botTools", () => {
@@ -173,12 +174,13 @@ describe("botTools", () => {
 		expect(await run("magnet", { url: "https://s/sem" })).toBe("erro: magnet não encontrado na página");
 	});
 
-	it("choose e yes_or_no julgam a pergunta e devolvem o veredito", async () => {
-		const { run, judgments } = setup();
-		expect(await run("choose", { question: "Which movie?", options: ["Paprika", "Inception"], context: "Ana hates anime" })).toStartWith(
+	it("choose e yes_or_no julgam a pergunta e guardam o veredito para a resposta do canal da conversa", async () => {
+		const { run, judgments, decide } = setup();
+		expect(await run("choose", { question: "Which movie?", options: ["Paprika", "Inception"], context: "Ana hates anime" })).toContain(
 			"veredito: Paprika",
 		);
-		expect(await run("yes_or_no", { question: "Gym today?" })).toStartWith("veredito: sim (90%)");
+		expect(await run("yes_or_no", { question: "Gym today?" })).toContain("veredito: sim (90%)");
+		expect(decide.take("c1").map((v) => v.split("\n")[0])).toEqual(["veredito: Paprika (confiança 70%)", "veredito: sim (90%)"]);
 		expect(judgments).toEqual([
 			{ kind: "choice", question: "Which movie?", options: ["Paprika", "Inception"], context: "Ana hates anime" },
 			{ kind: "odds", question: "Gym today?", context: "" },

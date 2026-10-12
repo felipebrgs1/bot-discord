@@ -23,6 +23,8 @@ export interface IncomingMessage {
 	messageId: string;
 	text: string;
 	images: readonly ImageData[];
+	/** Imagens vieram de mensagens anteriores do canal, nao desta. */
+	borrowedImages?: boolean;
 }
 
 /** Onde a resposta vai parar; implementado pelo adapter de entrada. */
@@ -46,6 +48,8 @@ export interface ReplyDeps {
 	systemPromptFor: (channelId: string) => string;
 	/** Texto do turno: quem fala, o que o bot sabe dela, conversa recente (Persona). */
 	turnText: (turn: Turn) => string;
+	/** Blocos que as tools guardaram para o canal durante o turno (vereditos); vao no fim da resposta. */
+	appendix?: (channelId: string) => readonly string[];
 }
 
 const MAX_WAITING = 8;
@@ -111,7 +115,9 @@ export class ReplyToMessage {
 		try {
 			const systemPrompt = this.deps.systemPromptFor(message.channelId);
 			const text = this.deps.turnText(message);
-			const answer = await target.whileWorking(() =>
+			// Sobra de turno que falhou nao pode colar nesta resposta.
+			this.deps.appendix?.(message.channelId);
+			const reply = await target.whileWorking(() =>
 				agent.ask({
 					channelId: message.channelId,
 					authorId: message.authorId,
@@ -122,7 +128,8 @@ export class ReplyToMessage {
 					systemPrompt,
 				}),
 			);
-			if (!answer.trim()) throw new Error("o modelo terminou sem texto de resposta");
+			if (!reply.trim()) throw new Error("o modelo terminou sem texto de resposta");
+			const answer = [reply, ...(this.deps.appendix?.(message.channelId) ?? [])].join("\n\n");
 			logger.info(`resposta ok canal=${message.channelId} len=${answer.length}`);
 			this.lastReply.set(message.channelId, clock.now());
 			await target.deliver(splitMessage(answer));

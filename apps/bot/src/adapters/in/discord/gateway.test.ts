@@ -258,30 +258,33 @@ describe("mensagem", () => {
 	});
 
 	it("anexo de imagem chega ao agente em base64", async () => {
-		const { asked, receive } = setup();
+		const { asked, turns, receive } = setup();
 		await receive(message({ ...mentioned, content: "", ...photo("https://cdn/foto.png") }).m);
 		expect(asked[0]?.text).toBe("(imagem anexada)");
 		expect(asked[0]?.images).toEqual([{ data: Buffer.from("IMG").toString("base64"), mimeType: "image/png" }]);
+		expect(turns[0]?.borrowedImages).toBe(false);
 	});
 
 	it("pergunta sem anexo usa a foto recente do canal; com mais de 10 min, nao", async () => {
-		const { asked, clock, receive } = setup();
+		const { asked, turns, clock, receive } = setup();
 		await receive(message({ id: "m20", content: "", ...photo("https://cdn/foto.png") }).m);
 		expect(asked).toEqual([]);
 		await receive(message({ id: "m21", ...mentioned, content: "quem é?" }).m);
 		expect(asked[0]?.images).toHaveLength(1);
+		expect(turns[0]?.borrowedImages).toBe(true);
 		clock.advance(10 * 60 * 1000 + 1);
 		await receive(message({ id: "m22", ...mentioned, content: "e agora?" }).m);
 		expect(asked[1]?.images).toEqual([]);
 	});
 
 	it("memoria vazia (pos-restart) busca foto no historico do canal", async () => {
-		const { asked, receive } = setup();
+		const { asked, turns, receive } = setup();
 		const history = new Map([["m30", { id: "m30", ...photo("https://cdn/antiga.png"), stickers: new Map(), embeds: [] }]]);
 		const { m } = message({ id: "m31", ...mentioned, content: "quem é?" });
 		m.channel = { ...m.channel, messages: { cache: new Map(), fetch: async () => history } } as never;
 		await receive(m);
 		expect(asked[0]?.images).toHaveLength(1);
+		expect(turns[0]?.borrowedImages).toBe(true);
 	});
 
 	it("reply numa foto: a propria e a respondida chegam", async () => {

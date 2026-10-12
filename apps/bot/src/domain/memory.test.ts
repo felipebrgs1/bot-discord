@@ -135,6 +135,17 @@ describe("turnText", () => {
 		);
 	});
 
+	it("imagens emprestadas do canal: avisa que sao so contexto", () => {
+		expect(turnText({ ...base, borrowedImages: true })).toBe(
+			[
+				"[mensagem de Ana (id u1)]",
+				"[as imagens anexadas são de mensagens anteriores do canal, não desta: só contexto; comente só se a pergunta for sobre elas]",
+				"[responda só a esta mensagem de Ana]",
+				"o que vc achou?",
+			].join("\n"),
+		);
+	});
+
 	it("conversa longa fica com as mensagens mais novas que cabem", () => {
 		const text = turnText(
 			{

@@ -174,6 +174,7 @@ export function compose(opts: ComposeOptions) {
 		},
 		systemPromptFor: (channelId) => persona.systemPromptFor(channelId),
 		turnText: (turn) => persona.turnText(turn),
+		appendix: (channelId) => tools.decide.take(channelId),
 	});
 	const panel = new Panel({ config, souls, sessions: agent, memories, memory, metrics, logs: log, agentModel: agentModelText });
 	const webChat = new WebChat({

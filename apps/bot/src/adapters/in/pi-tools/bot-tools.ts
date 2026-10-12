@@ -30,7 +30,7 @@ function textResult(text: string): { content: [{ type: "text"; text: string }]; 
 
 /** O Jev foi treinado em ingles e erra mais em portugues. */
 const JEV_HINT =
-	"Escreva question e context em inglês (o modelo de decisão erra mais em português). No context vai o que se sabe de quem pergunta e do grupo que pesa na decisão. Repasse o veredito ao usuário com o bloco de barras e comente do seu jeito.";
+	"Escreva question e context em inglês (o modelo de decisão erra mais em português). No context vai o que se sabe de quem pergunta e do grupo que pesa na decisão. O bloco com as probabilidades é anexado sozinho no fim da sua resposta: não repita, comente o resultado do seu jeito.";
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -188,7 +188,7 @@ export function botTools(services: ToolServices, channelId: string): ToolDefinit
 				options: Type.Array(Type.String(), { description: "De 2 a 10 opções, como o usuário escreveu" }),
 				context: Type.Optional(Type.String({ description: "Contexto relevante, em inglês" })),
 			}),
-			execute: async (_id, p) => textResult(await decide.choose(p.question ?? "", p.options ?? [], p.context)),
+			execute: async (_id, p) => textResult(await decide.choose(channelId, p.question ?? "", p.options ?? [], p.context)),
 		}),
 		defineTool({
 			name: "yes_or_no",
@@ -198,7 +198,7 @@ export function botTools(services: ToolServices, channelId: string): ToolDefinit
 				question: Type.String({ description: "A pergunta de sim ou não, em inglês" }),
 				context: Type.Optional(Type.String({ description: "Contexto relevante, em inglês" })),
 			}),
-			execute: async (_id, p) => textResult(await decide.odds(p.question ?? "", p.context)),
+			execute: async (_id, p) => textResult(await decide.odds(channelId, p.question ?? "", p.context)),
 		}),
 	];
 }

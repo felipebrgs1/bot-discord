@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { MEMORY_GUIDANCE, MEMORY_LIMITS } from "@/domain/memory.ts";
+import { DECISION_GUIDANCE } from "@/domain/verdict.ts";
 import { FakeMemoryStore } from "@/test-support/fakes/memory-store.ts";
 import { FakeMessageStore } from "@/test-support/fakes/message-store.ts";
 import { FakeSoulStore } from "@/test-support/fakes/soul-store.ts";
@@ -15,18 +16,18 @@ function setup() {
 }
 
 describe("Persona.systemPromptFor", () => {
-	it("soul do canal, como usar a memoria e o bloco do grupo inteiro, sem memoria de pessoa", () => {
+	it("soul do canal, como usar a memoria, como decidir e o bloco do grupo inteiro, sem memoria de pessoa", () => {
 		const { souls, persona } = setup();
 		souls.ensureSeed("sou o elmatadore");
 		expect(persona.systemPromptFor("c1")).toBe(
-			["sou o elmatadore", MEMORY_GUIDANCE, `[memória do grupo] (16/${MEMORY_LIMITS.group})\n- sextou é sagrado`].join("\n\n"),
+			["sou o elmatadore", MEMORY_GUIDANCE, DECISION_GUIDANCE, `[memória do grupo] (16/${MEMORY_LIMITS.group})\n- sextou é sagrado`].join("\n\n"),
 		);
 	});
 
 	it("bloco vazio aparece vazio (o modelo ve o teto e sabe que pode escrever)", () => {
 		const { persona } = setup();
 		expect(persona.systemPromptFor("c9")).toBe(
-			[MEMORY_GUIDANCE, `[memória do grupo] (0/${MEMORY_LIMITS.group})\n(vazia)`].join("\n\n"),
+			[MEMORY_GUIDANCE, DECISION_GUIDANCE, `[memória do grupo] (0/${MEMORY_LIMITS.group})\n(vazia)`].join("\n\n"),
 		);
 	});
 });
@@ -55,5 +56,11 @@ describe("Persona.turnText", () => {
 		const { persona } = setup();
 		const text = persona.turnText({ channelId: "c1", authorId: "u2", authorName: "Bruno", messageId: "m9", text: "e o meu?" });
 		expect(text).toBe("[mensagem de Bruno (id u2)]\ne o meu?");
+	});
+
+	it("avisa quando as imagens anexadas vieram de mensagens anteriores do canal", () => {
+		const { persona } = setup();
+		const text = persona.turnText({ channelId: "c1", authorId: "u2", authorName: "Bruno", messageId: "m9", text: "2001 ou paprika?", borrowedImages: true });
+		expect(text).toContain("[as imagens anexadas são de mensagens anteriores do canal");
 	});
 });

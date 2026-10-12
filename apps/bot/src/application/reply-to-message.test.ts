@@ -8,6 +8,13 @@ import { type IncomingMessage, type ReplySettings, ReplyToMessage } from "./repl
 
 function setup(settings: Partial<ReplySettings> = {}, turnText: (turn: Turn) => string = (turn) => turn.text) {
 	const agent = new FakeChatAgent();
+	/** Vereditos por canal, como o Decide guarda durante o turno. */
+	const verdicts = new Map<string, string[]>();
+	const appendix = (channelId: string) => {
+		const out = verdicts.get(channelId) ?? [];
+		verdicts.delete(channelId);
+		return out;
+	};
 	const clock = new FakeClock(100_000);
 	const logger = new FakeLogger();
 	const replies = new ReplyToMessage({
@@ -17,8 +24,9 @@ function setup(settings: Partial<ReplySettings> = {}, turnText: (turn: Turn) => 
 		settings: () => ({ cooldownMs: 0, adminIds: [], ...settings }),
 		systemPromptFor: (channelId) => `persona ${channelId}`,
 		turnText,
+		appendix,
 	});
-	return { agent, clock, logger, replies };
+	return { agent, clock, logger, replies, verdicts };
 }
 
 const msg = (over: Partial<IncomingMessage> = {}): IncomingMessage => ({
@@ -60,6 +68,27 @@ describe("ReplyToMessage: resposta", () => {
 		]);
 		expect(target.delivered).toEqual([["eco: [Ana/m1] tudo bem?"]]);
 		expect(target.events).toEqual(["working:start", "working:end", "deliver"]);
+	});
+
+	it("veredito guardado durante o turno vai no fim da resposta", async () => {
+		const { agent, replies, verdicts } = setup();
+		agent.answer = async (r) => {
+			verdicts.set(r.channelId, ["veredito: sim (82%)"]);
+			return "vai sim";
+		};
+		const target = new FakeReplyTarget();
+		replies.submit(msg(), target);
+		await replies.idle();
+		expect(target.delivered).toEqual([["vai sim\n\nveredito: sim (82%)"]]);
+	});
+
+	it("veredito que sobrou de turno anterior nao entra na resposta", async () => {
+		const { replies, verdicts } = setup();
+		verdicts.set("c1", ["veredito: velho"]);
+		const target = new FakeReplyTarget();
+		replies.submit(msg(), target);
+		await replies.idle();
+		expect(target.delivered).toEqual([["eco: oi"]]);
 	});
 
 	it("autor em adminIds pergunta como admin", async () => {

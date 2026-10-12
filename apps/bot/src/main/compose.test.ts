@@ -280,7 +280,7 @@ describe("compose", () => {
 		const tool = app.tools("c1").find((t) => t.name === "yes_or_no");
 		const result = await tool?.execute("t", { question: "Gym today?" } as never, undefined as never, undefined as never, {} as never);
 		const first = result?.content[0];
-		expect(first?.type === "text" ? first.text : "").toStartWith("veredito: sim (82%)");
+		expect(first?.type === "text" ? first.text : "").toContain("veredito: sim (82%)");
 		expect(auth).toEqual(["https://api.typesafe.ai/v1/systemone Bearer ts-k"]);
 		app.db.close();
 	});
@@ -487,6 +487,70 @@ describe("compose", () => {
 		await app.nudge.tick();
 		await stop();
 		expect(sent).toEqual([]);
+	});
+
+	it("pergunta de sim ou nao no Discord: resposta do agente com o bloco do veredito do Jev no fim", async () => {
+		const handlers: Record<string, (m: unknown) => void> = {};
+		const client = {
+			...fakeDiscord([]).client,
+			once: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+			on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+			guilds: { fetch: async () => ({ commands: { set: async () => undefined } }) },
+		};
+		const http = (async () =>
+			new Response(JSON.stringify({ answers: { verdict: { type: "noul", noul: 0.82 } } }))) as unknown as typeof fetch;
+		// Sessao falsa que chama a tool yes_or_no do canal, como o modelo faria.
+		let tools: (conversationId: string) => { name: string; execute: (...a: never[]) => Promise<unknown> }[] = () => [];
+		const toolSessions: SessionFactory = {
+			async create(conversationId) {
+				return {
+					prompt: async () => {
+						const tool = tools(conversationId).find((t) => t.name === "yes_or_no");
+						await tool?.execute(...(["t", { question: "Gym today?" }, undefined, undefined, {}] as never[]));
+					},
+					waitForIdle: async () => undefined,
+					getLastAssistantText: () => "vai sim",
+					getSessionStats: () => ({ tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0 }),
+					dispose: () => undefined,
+				} as unknown as AgentSession;
+			},
+			dispose: () => undefined,
+		};
+		const root = rootWith("sou um bot");
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { DISCORD_TOKEN: "tok", DASHBOARD_PORT: "0", TYPESAFE_API_KEY: "ts-k" },
+			sessionFactory: toolSessions,
+			workerFactory: fakeWorkers,
+			http,
+			discordClient: client as never,
+		});
+		tools = app.tools as never;
+		app.config.set("discord", { guild_id: "g1", channel_ids: ["c1"], admin_ids: [] });
+		const stop = await app.start();
+		handlers["clientReady"]?.({ user: { id: "bot", tag: "bot#1" } });
+		const replies: string[] = [];
+		handlers["messageCreate"]?.({
+			id: "m1",
+			guildId: "g1",
+			channelId: "c1",
+			author: { id: "u1", username: "ana", bot: false, system: false },
+			webhookId: null,
+			content: "<@bot> devo ir pra academia hoje?",
+			cleanContent: "@bot devo ir pra academia hoje?",
+			mentions: { users: { size: 1 }, has: (id: string) => id === "bot" },
+			attachments: new Map(),
+			stickers: new Map(),
+			reply: async (text: string) => void replies.push(text),
+			channel: { messages: { cache: new Map() }, sendTyping: async () => undefined, send: async () => undefined },
+		});
+		await new Promise((r) => setTimeout(r, 50));
+		await stop();
+		expect(replies).toHaveLength(1);
+		expect(replies[0]).toStartWith("vai sim\n\nveredito: sim (82%)");
 	});
 
 	it("porta do painel ocupada: erro antes de qualquer login no Discord", async () => {

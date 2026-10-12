@@ -366,7 +366,9 @@ export class DiscordGateway {
 				await m.channel.send({ files: [{ attachment: path }] });
 			}),
 		);
-		const incoming = { channelId: m.channelId, authorId: m.author.id, authorName, messageId: m.id, text, images: downloaded };
+		// Imagem de mensagem anterior do canal: o turno avisa que e so contexto.
+		const borrowedImages = direct.length === 0 && downloaded.length > 0;
+		const incoming = { channelId: m.channelId, authorId: m.author.id, authorName, messageId: m.id, text, images: downloaded, borrowedImages };
 		if (!replies.submit(incoming, target)) {
 			logger.warn(`fila cheia canal=${m.channelId}: mensagem descartada`);
 		}

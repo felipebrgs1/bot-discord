@@ -105,6 +105,8 @@ export interface TurnInput {
 	memory: readonly string[];
 	/** Conversa do canal desde a ultima fala do bot, antigas primeiro. */
 	recent: readonly RecentLine[];
+	/** Imagens anexadas vieram de mensagens anteriores do canal, nao desta. */
+	borrowedImages?: boolean;
 }
 
 /** Linhas inteiras (na ordem) enquanto couberem em maxChars. */
@@ -132,6 +134,11 @@ export function turnText(turn: TurnInput, maxRecentChars = 2000): string {
 		maxRecentChars,
 	).reverse();
 	if (recent.length > 0) parts.push("[conversa recente no canal: só contexto, não é pergunta para você]", ...recent);
+	if (turn.borrowedImages) {
+		parts.push(
+			"[as imagens anexadas são de mensagens anteriores do canal, não desta: só contexto; comente só se a pergunta for sobre elas]",
+		);
+	}
 	if (parts.length > 1) parts.push(`[responda só a esta mensagem de ${turn.authorName}]`);
 	return [...parts, turn.text].join("\n");
 }
