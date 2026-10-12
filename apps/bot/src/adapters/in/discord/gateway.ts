@@ -13,6 +13,7 @@ import {
 	type OmitPartialGroupDMChannel,
 } from "discord.js";
 import type { DownloadImages } from "@/application/download-images.ts";
+import type { ReadTextFiles } from "@/application/read-text-files.ts";
 import type { DownloadMedia } from "@/application/download-media.ts";
 import type { GenerateImage } from "@/application/generate-image.ts";
 import type { ImagePromptWriter } from "@/application/image-prompt.ts";
@@ -32,7 +33,7 @@ import { type ChannelAccess, isAllowedChannel, shouldReply } from "@/domain/trig
 import { BAIXAR_COMMAND_JSON } from "./baixar.ts";
 import { CUTUCAR_COMMAND_JSON } from "./cutucar.ts";
 import { GERAR_COMMAND_JSON } from "./gerar.ts";
-import { collectImageUrls, type ImageCarrier, imagesOf, mergeUrls, valuesOf } from "./attachments.ts";
+import { collectImageUrls, type ImageCarrier, imagesOf, mergeUrls, textFilesOf, valuesOf } from "./attachments.ts";
 import { LISTA_COMMAND_JSON, listaEmbed, MAGNET_BUTTON_PREFIX, magnetRow } from "./lista.ts";
 import { discordReplyTarget } from "./reply-target.ts";
 
@@ -62,15 +63,15 @@ export function isTrigger(message: GuildMessage, botUserId: string): boolean {
 	});
 }
 
-/** Mensagem respondida (reply com foto): falha isolada = sem imagem extra. */
-async function referencedImageUrls(m: GuildMessage): Promise<string[]> {
+/** Mensagem respondida (reply com foto ou arquivo): falha isolada = sem anexo extra. */
+async function referencedMessage(m: GuildMessage): Promise<ImageCarrier | null> {
 	const refId = m.reference?.messageId;
 	const fetch = (m.channel.messages as unknown as { fetch?: (id: string) => Promise<ImageCarrier> }).fetch;
-	if (!refId || typeof fetch !== "function") return [];
+	if (!refId || typeof fetch !== "function") return null;
 	try {
-		return imagesOf(await fetch.call(m.channel.messages, refId));
+		return await fetch.call(m.channel.messages, refId);
 	} catch {
-		return [];
+		return null;
 	}
 }
 
@@ -101,6 +102,8 @@ export interface GatewayDeps {
 	nudgeControl: NudgeControl;
 	games: SearchGames;
 	images: DownloadImages;
+	/** Anexos de texto (message.txt, .md) da mensagem e da respondida. */
+	texts: ReadTextFiles;
 	media: DownloadMedia;
 	/** Gerador do /gerar (OpenRouter). */
 	drawing: GenerateImage;
@@ -321,13 +324,15 @@ export class DiscordGateway {
 	}
 
 	private async onMessage(message: Message): Promise<void> {
-		const { config, logger, history, commands, replies, images } = this.deps;
+		const { config, logger, history, commands, replies, images, texts } = this.deps;
 		const eligible = isEligibleChannel(message, config.all());
 		logger.info(`msg canal=${message.channelId} autor=${message.author?.id} guild=${message.guildId} eligible=${eligible}`);
 		if (!eligible) return;
 		const m = message as GuildMessage;
 		// URLs primeiro (barato): propria + respondida; download so se disparar.
-		const direct = mergeUrls(collectImageUrls(valuesOf(m.attachments), valuesOf(m.stickers)), await referencedImageUrls(m));
+		const ref = await referencedMessage(m);
+		const direct = mergeUrls(collectImageUrls(valuesOf(m.attachments), valuesOf(m.stickers)), ref ? imagesOf(ref) : []);
+		const ownFiles = textFilesOf(m);
 		this.rememberImages(m.channelId, direct);
 		// Apelido no servidor > nome global > username; mencoes como @nome (nao <@id>).
 		const authorName = m.member?.displayName ?? m.author.globalName ?? m.author.username;
@@ -337,7 +342,7 @@ export class DiscordGateway {
 			authorId: m.author.id,
 			authorName,
 			messageId: m.id,
-			body: `${content}${direct.length > 0 ? " [imagem]" : ""}`,
+			body: `${content}${direct.length > 0 ? " [imagem]" : ""}${ownFiles.map((f) => ` [arquivo ${f.name}]`).join("")}`,
 			replyTo: m.reference?.messageId,
 			fromBot: m.author.bot,
 		});
@@ -360,7 +365,9 @@ export class DiscordGateway {
 		const urls = mergeUrls([...direct], this.fresh(this.channelImages, m.channelId, RECENT_IMAGE_TTL_MS)?.urls ?? []);
 		if (urls.length === 0) mergeUrls(urls, await channelHistoryImageUrls(m));
 		const downloaded: ImageData[] = await images.run(urls).catch(() => []);
-		const text = content || (downloaded.length > 0 ? "(imagem anexada)" : "");
+		const files = await texts.run([...ownFiles, ...(ref ? textFilesOf(ref) : [])]).catch(() => "");
+		const said = content || (downloaded.length > 0 && !files ? "(imagem anexada)" : "");
+		const text = [said, files].filter(Boolean).join("\n\n");
 		const target = discordReplyTarget(m, this.botUserId, () =>
 			this.deps.outbox.deliver(m.channelId, async (path) => {
 				await m.channel.send({ files: [{ attachment: path }] });

@@ -553,6 +553,63 @@ describe("compose", () => {
 		expect(replies[0]).toStartWith("vai sim\n\nveredito: sim (82%)");
 	});
 
+	it("arquivo .txt anexado no Discord chega ao agente junto da mensagem", async () => {
+		const handlers: Record<string, (m: unknown) => void> = {};
+		const client = {
+			...fakeDiscord([]).client,
+			once: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+			on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+			guilds: { fetch: async () => ({ commands: { set: async () => undefined } }) },
+		};
+		const http = (async () => new Response("qual alternativa?")) as unknown as typeof fetch;
+		const prompts: string[] = [];
+		const recording: SessionFactory = {
+			async create() {
+				return {
+					prompt: async (text: string) => void prompts.push(text),
+					waitForIdle: async () => undefined,
+					getLastAssistantText: () => "a B",
+					getSessionStats: () => ({ tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0 }),
+					dispose: () => undefined,
+				} as unknown as AgentSession;
+			},
+			dispose: () => undefined,
+		};
+		const root = rootWith("sou um bot");
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			// Sem DNS no teste: a guarda SSRF libera tudo.
+			env: { DISCORD_TOKEN: "tok", DASHBOARD_PORT: "0", AGENT_ALLOW_PRIVATE: "1" },
+			sessionFactory: recording,
+			workerFactory: fakeWorkers,
+			http,
+			discordClient: client as never,
+		});
+		app.config.set("discord", { guild_id: "g1", channel_ids: ["c1"], admin_ids: [] });
+		const stop = await app.start();
+		handlers["clientReady"]?.({ user: { id: "bot", tag: "bot#1" } });
+		handlers["messageCreate"]?.({
+			id: "m1",
+			guildId: "g1",
+			channelId: "c1",
+			author: { id: "u1", username: "ana", bot: false, system: false },
+			webhookId: null,
+			content: "<@bot> choice",
+			cleanContent: "@bot choice",
+			mentions: { users: { size: 1 }, has: (id: string) => id === "bot" },
+			attachments: new Map([["t1", { name: "message.txt", contentType: "text/plain", url: "https://cdn.discordapp.com/message.txt" }]]),
+			stickers: new Map(),
+			reply: async () => undefined,
+			channel: { messages: { cache: new Map() }, sendTyping: async () => undefined, send: async () => undefined },
+		});
+		await new Promise((r) => setTimeout(r, 50));
+		await stop();
+		expect(prompts[0]).toContain("@bot choice\n\n[arquivo message.txt]\nqual alternativa?");
+	});
+
 	it("porta do painel ocupada: erro antes de qualquer login no Discord", async () => {
 		const discord = fakeDiscord([]);
 		const root = rootWith("sou um bot");

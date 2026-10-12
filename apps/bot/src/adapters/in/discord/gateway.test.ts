@@ -10,6 +10,7 @@ import type { Turn } from "@/application/persona.ts";
 import type { ChatRequest } from "@/application/ports/chat-agent.ts";
 import type { GameCatalog } from "@/application/ports/game-catalog.ts";
 import type { MediaResult } from "@/application/ports/media-downloader.ts";
+import { ReadTextFiles } from "@/application/read-text-files.ts";
 import { ReplyToMessage } from "@/application/reply-to-message.ts";
 import { SearchGames } from "@/application/search-games.ts";
 import { TextCommands } from "@/application/text-commands.ts";
@@ -117,6 +118,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		login: async () => undefined,
 		destroy: () => undefined,
 	};
+	const texts = new FakePageFetcher(opts.routes ?? [PNG]);
 	const gw = new DiscordGateway({
 		config,
 		replies,
@@ -130,6 +132,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		nudgeControl: new NudgeControl({ config, adminIds: () => ["dono"] }),
 		games,
 		images: new DownloadImages(new FakePageFetcher(opts.routes ?? [PNG]), new FakeImageShrinker()),
+		texts: new ReadTextFiles(texts),
 		media,
 		drawing,
 		prompting,
@@ -147,7 +150,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		await new Promise((r) => setTimeout(r, 10));
 		await replies.idle();
 	};
-	return { gw, clock, config, asked, turns, messages, outbox, downloads, prompts, receive, logger, handlers, channelSends, nudged };
+	return { gw, clock, config, asked, turns, texts, messages, outbox, downloads, prompts, receive, logger, handlers, channelSends, nudged };
 }
 
 function message(over: Record<string, unknown> = {}) {
@@ -179,6 +182,9 @@ function message(over: Record<string, unknown> = {}) {
 }
 
 const mentioned = { mentions: { users: { size: 1 }, has: () => true } };
+const textFile = (name: string, url: string) => ({
+	attachments: new Map([["t1", { name, contentType: "text/plain; charset=utf-8", url }]]),
+});
 const photo = (url: string) => ({ attachments: new Map([["a1", { contentType: "image/png", url }]]) });
 
 describe("isEligibleChannel / isTrigger", () => {
@@ -255,6 +261,37 @@ describe("mensagem", () => {
 		await receive(message({ ...mentioned, channelId: "c9" }).m);
 		expect(asked).toEqual([]);
 		expect(messages.messages).toEqual([]);
+	});
+
+	it("anexo de texto (message.txt) chega ao agente junto da mensagem e marca o historico", async () => {
+		const { asked, messages, receive } = setup({ routes: [[/message\.txt/, { body: "qual alternativa?\nA) x" }]] });
+		await receive(message({ ...mentioned, content: "choice", ...textFile("message.txt", "https://cdn/message.txt") }).m);
+		expect(asked[0]?.text).toBe("choice\n\n[arquivo message.txt]\nqual alternativa?\nA) x");
+		expect(messages.messages[0]?.body).toBe("choice [arquivo message.txt]");
+	});
+
+	it("so o anexo de texto, sem mensagem: o arquivo vira o texto", async () => {
+		const { asked, receive } = setup({ routes: [[/notas/, { body: "# notas" }]] });
+		await receive(message({ ...mentioned, content: "", ...textFile("notas.md", "https://cdn/notas.md") }).m);
+		expect(asked[0]?.text).toBe("[arquivo notas.md]\n# notas");
+	});
+
+	it("reply num arquivo de texto: o da mensagem respondida chega", async () => {
+		const { asked, receive } = setup({ routes: [[/prova/, { body: "questao 1" }]] });
+		const ref = { ...textFile("prova.txt", "https://cdn/prova.txt"), stickers: new Map(), embeds: [] };
+		const { m } = message({ ...mentioned, content: "responde", reference: { messageId: "m0" } });
+		// fetch(id) = a respondida; fetch({ limit }) = historico do canal (vazio).
+		const fetch = async (arg: unknown) => (typeof arg === "string" ? ref : new Map());
+		m.channel = { ...m.channel, messages: { cache: new Map(), fetch } } as never;
+		await receive(m);
+		expect(asked[0]?.text).toBe("responde\n\n[arquivo prova.txt]\nquestao 1");
+	});
+
+	it("mensagem que nao dispara o bot nao baixa o arquivo", async () => {
+		const { asked, texts, receive } = setup({ routes: [[/message/, { body: "x" }]] });
+		await receive(message({ content: "olha", ...textFile("message.txt", "https://cdn/message.txt") }).m);
+		expect(asked).toEqual([]);
+		expect(texts.requested).toEqual([]);
 	});
 
 	it("anexo de imagem chega ao agente em base64", async () => {

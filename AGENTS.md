@@ -94,12 +94,13 @@ src/
   domain/          regras puras: settings, roles, trigger, cooldown, reply-split,
                    memory (blocos com teto, edicao, revisao, turno), soul, game, media-policy,
                    html-text, http-url, image, media-quality, message, turn, swarm,
-                   idle-nudge (cutucao de canal parado), verdict (escolha, sim ou nao)
+                   idle-nudge (cutucao de canal parado), verdict (escolha, sim ou nao),
+                   text-file (anexo de texto)
   application/
     ports/         interfaces das portas de saida + suites de contrato
     *.ts           casos de uso: ReplyToMessage, TextCommands, Persona, MessageLog,
                    AgentMemory, ReviewMemory, Recall, WebResearch, SearchGames, DownloadMedia,
-                   DownloadImages, GenerateImage, ImagePromptWriter, OutboxDelivery, WebChat, Swarm, Panel,
+                   DownloadImages, ReadTextFiles, GenerateImage, ImagePromptWriter, OutboxDelivery, WebChat, Swarm, Panel,
                    IdleNudge, NudgeControl, Decide
   adapters/
     in/            discord (gateway, anexos, /lista, /baixar, /gerar, /cutucar, ReplyTarget), http-panel,

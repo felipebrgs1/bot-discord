@@ -47,6 +47,7 @@ import { OutboxDelivery } from "@/application/outbox-delivery.ts";
 import { Panel } from "@/application/panel.ts";
 import { Persona } from "@/application/persona.ts";
 import type { WebSearch } from "@/application/ports/web-search.ts";
+import { ReadTextFiles } from "@/application/read-text-files.ts";
 import { Recall } from "@/application/recall.ts";
 import { ReplyToMessage } from "@/application/reply-to-message.ts";
 import { ReviewMemory } from "@/application/review-memory.ts";
@@ -203,6 +204,7 @@ export function compose(opts: ComposeOptions) {
 		nudgeControl: new NudgeControl({ config, adminIds: () => config.all().discord.admin_ids }),
 		games,
 		images: new DownloadImages(fetcher, new FfmpegImageShrinker()),
+		texts: new ReadTextFiles(fetcher),
 		media: tools.media,
 		drawing,
 		prompting,

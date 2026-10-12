@@ -1,8 +1,10 @@
-/** Onde o Discord guarda imagem: anexos, stickers e capas de embed (propria, respondida, historico). */
+/** Onde o Discord guarda imagem (anexos, stickers, capas de embed) e arquivo de texto (anexos). */
 
 import { MAX_VISION_IMAGES } from "@/domain/image.ts";
+import { isTextFile } from "@/domain/text-file.ts";
 
 export interface AttachmentLike {
+	name?: string;
 	contentType?: string | null;
 	url: string;
 }
@@ -70,4 +72,14 @@ export function mergeUrls(into: string[], more: readonly string[]): string[] {
 		if (!into.includes(u)) into.push(u);
 	}
 	return into;
+}
+
+/** Anexos de texto (message.txt, .md, codigo) com nome e URL. */
+export function textFilesOf(m: Pick<ImageCarrier, "attachments">): { name: string; url: string }[] {
+	const out: { name: string; url: string }[] = [];
+	for (const a of valuesOf(m.attachments) ?? []) {
+		const name = a.name ?? "";
+		if (a.url && name && isTextFile(name, a.contentType)) out.push({ name, url: a.url });
+	}
+	return out;
 }
