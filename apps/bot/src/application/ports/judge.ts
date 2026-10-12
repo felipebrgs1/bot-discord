@@ -2,7 +2,14 @@ import type { Verdict } from "@/domain/verdict.ts";
 
 /** Pergunta para o modelo de decisao; context = o que se sabe de quem pergunta. */
 export type Judgment =
-	| { kind: "choice"; question: string; options: string[]; context: string }
+	| {
+			kind: "choice";
+			question: string;
+			options: string[];
+			/** Texto de cada opcao (alternativa de questao), quando o rotulo sozinho nao diz nada. */
+			descriptions?: Record<string, string>;
+			context: string;
+	  }
 	| { kind: "odds"; question: string; context: string };
 
 /** Modelo de decisao: julga a pergunta e devolve veredito tipado. */

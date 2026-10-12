@@ -10,6 +10,12 @@ function setup(settings: Partial<ReplySettings> = {}, turnText: (turn: Turn) => 
 	const agent = new FakeChatAgent();
 	/** Vereditos por canal, como o Decide guarda durante o turno. */
 	const verdicts = new Map<string, string[]>();
+	/** Questao de multipla escolha: o "Jev" ja decide antes do agente. */
+	const prejudge = async (channelId: string, text: string) => {
+		if (!text.includes("A)")) return null;
+		verdicts.set(channelId, ["veredito: B"]);
+		return "[nota: B]";
+	};
 	const appendix = (channelId: string) => {
 		const out = verdicts.get(channelId) ?? [];
 		verdicts.delete(channelId);
@@ -25,6 +31,7 @@ function setup(settings: Partial<ReplySettings> = {}, turnText: (turn: Turn) => 
 		systemPromptFor: (channelId) => `persona ${channelId}`,
 		turnText,
 		appendix,
+		prejudge,
 	});
 	return { agent, clock, logger, replies, verdicts };
 }
@@ -80,6 +87,15 @@ describe("ReplyToMessage: resposta", () => {
 		replies.submit(msg(), target);
 		await replies.idle();
 		expect(target.delivered).toEqual([["vai sim\n\nveredito: sim (82%)"]]);
+	});
+
+	it("questao de multipla escolha: nota do veredito no turno e bloco no fim da resposta", async () => {
+		const { agent, replies } = setup();
+		const target = new FakeReplyTarget();
+		replies.submit(msg({ text: "qual?\nA) x\nB) y" }), target);
+		await replies.idle();
+		expect(agent.requests[0]?.text).toBe("qual?\nA) x\nB) y\n[nota: B]");
+		expect(target.delivered).toEqual([["eco: qual?\nA) x\nB) y\n[nota: B]\n\nveredito: B"]]);
 	});
 
 	it("veredito que sobrou de turno anterior nao entra na resposta", async () => {

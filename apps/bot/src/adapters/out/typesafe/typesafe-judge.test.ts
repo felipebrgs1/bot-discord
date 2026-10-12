@@ -63,6 +63,23 @@ describe("TypeSafeJudge", () => {
 		});
 	});
 
+	it("escolha com descricao: cada opcao leva o texto da alternativa como criterio", async () => {
+		const { calls, http } = recorder(200, {
+			answers: { verdict: { type: "choice", choice: "B", probabilities: { A: 0.1, B: 0.9 }, confidence: 0.8 } },
+		});
+		await new TypeSafeJudge({ apiKey: "k", http }).judge({
+			kind: "choice",
+			question: "Qual conclusão decorre?",
+			options: ["A", "B"],
+			descriptions: { A: "Todos os Zéglis são Vroblis.", B: "Nenhum Tróvi é Nérgli." },
+			context: "",
+		});
+		expect(JSON.parse(String(calls[0]?.init.body)).questions.verdict.criteria).toEqual({
+			A: "Todos os Zéglis são Vroblis.",
+			B: "Nenhum Tróvi é Nérgli.",
+		});
+	});
+
 	it("sim ou nao: sem contexto o state so tem a pergunta; devolve o noul", async () => {
 		const { calls, http } = recorder(200, { answers: { verdict: { type: "noul", noul: 0.82 } } });
 		const verdict = await new TypeSafeJudge({ apiKey: "k", http }).judge({ kind: "odds", question: "Gym today?", context: "" });

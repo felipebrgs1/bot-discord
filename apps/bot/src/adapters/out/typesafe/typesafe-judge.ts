@@ -30,7 +30,7 @@ function question(judgment: Judgment) {
 		verdict: {
 			type: "choice",
 			instructions: `Pick the best answer to \`question\`${withContext}.`,
-			criteria: Object.fromEntries(judgment.options.map((o) => [o, null])),
+			criteria: Object.fromEntries(judgment.options.map((o) => [o, judgment.descriptions?.[o] ?? null])),
 		},
 	};
 }

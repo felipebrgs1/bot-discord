@@ -50,6 +50,8 @@ export interface ReplyDeps {
 	turnText: (turn: Turn) => string;
 	/** Blocos que as tools guardaram para o canal durante o turno (vereditos); vao no fim da resposta. */
 	appendix?: (channelId: string) => readonly string[];
+	/** Decisao tomada antes do agente (questao de multipla escolha); nota que entra no turno. */
+	prejudge?: (channelId: string, text: string) => Promise<string | null>;
 }
 
 const MAX_WAITING = 8;
@@ -114,11 +116,13 @@ export class ReplyToMessage {
 		logger.info(`resposta canal=${message.channelId} role=${role} len=${message.text.length}`);
 		try {
 			const systemPrompt = this.deps.systemPromptFor(message.channelId);
-			const text = this.deps.turnText(message);
+			const turn = this.deps.turnText(message);
 			// Sobra de turno que falhou nao pode colar nesta resposta.
 			this.deps.appendix?.(message.channelId);
-			const reply = await target.whileWorking(() =>
-				agent.ask({
+			const reply = await target.whileWorking(async () => {
+				const note = await this.deps.prejudge?.(message.channelId, message.text);
+				const text = note ? `${turn}\n${note}` : turn;
+				return agent.ask({
 					channelId: message.channelId,
 					authorId: message.authorId,
 					role,
@@ -126,8 +130,8 @@ export class ReplyToMessage {
 					images: message.images,
 					source: "discord",
 					systemPrompt,
-				}),
-			);
+				});
+			});
 			if (!reply.trim()) throw new Error("o modelo terminou sem texto de resposta");
 			const answer = [reply, ...(this.deps.appendix?.(message.channelId) ?? [])].join("\n\n");
 			logger.info(`resposta ok canal=${message.channelId} len=${answer.length}`);

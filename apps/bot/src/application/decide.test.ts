@@ -82,6 +82,51 @@ describe("Decide.take", () => {
 	});
 });
 
+describe("Decide.prejudge", () => {
+	const QUESTION = "Qual conclusão decorre?\nA) Todos os Zéglis são Vroblis.\nB) Nenhum Tróvi é Nérgli.";
+	const B: Verdict = {
+		kind: "choice",
+		pick: "B",
+		confidence: 0.8,
+		probabilities: [
+			{ option: "A", p: 0.1 },
+			{ option: "B", p: 0.9 },
+		],
+	};
+
+	it("questao de multipla escolha: julga as alternativas, guarda o veredito e devolve a nota do turno", async () => {
+		const { calls, fake } = judge(async () => B);
+		const decide = new Decide(fake);
+		expect(await decide.prejudge("c1", QUESTION)).toBe(
+			"[questão de múltipla escolha: o modelo de decisão escolheu a alternativa B (confiança 80%). Responda B e explique do seu jeito; se discordar, diga por quê. O bloco com as probabilidades vai anexado no fim da sua resposta: não repita.]",
+		);
+		expect(calls).toEqual([
+			{
+				kind: "choice",
+				question: "Qual conclusão decorre?",
+				options: ["A", "B"],
+				descriptions: { A: "Todos os Zéglis são Vroblis.", B: "Nenhum Tróvi é Nérgli." },
+				context: "",
+			},
+		]);
+		expect(decide.take("c1")).toEqual([formatVerdict(B)]);
+	});
+
+	it("mensagem comum, falha do modelo ou sem modelo: nada", async () => {
+		const { calls, fake } = judge(async () => B);
+		expect(await new Decide(fake).prejudge("c1", "bora jogar?")).toBeNull();
+		expect(calls).toEqual([]);
+		const failing = new Decide(
+			judge(async () => {
+				throw new Error("x");
+			}).fake,
+		);
+		expect(await failing.prejudge("c1", QUESTION)).toBeNull();
+		expect(failing.take("c1")).toEqual([]);
+		expect(await new Decide(undefined).prejudge("c1", QUESTION)).toBeNull();
+	});
+});
+
 describe("Decide sem modelo configurado", () => {
 	it("avisa qual variavel falta", async () => {
 		const decide = new Decide(undefined);

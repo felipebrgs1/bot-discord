@@ -50,3 +50,31 @@ export function formatVerdict(verdict: Verdict): string {
 		"```",
 	].join("\n");
 }
+
+/** Questao de multipla escolha: enunciado + alternativas rotuladas (A, B, C...). */
+export interface MultipleChoice {
+	question: string;
+	options: { label: string; text: string }[];
+}
+
+const ALTERNATIVE = /^\s*\(?([a-j])[).:-]\s+(.*)$/i;
+
+/** Enunciado seguido de alternativas A), B)... em ordem (a. ou (a) tambem); null quando nao e questao. */
+export function parseMultipleChoice(text: string): MultipleChoice | null {
+	const lines = text.split("\n");
+	const first = lines.findIndex((l) => ALTERNATIVE.exec(l)?.[1]?.toUpperCase() === "A");
+	if (first <= 0) return null;
+	const question = lines.slice(0, first).join("\n").trim();
+	const options: { label: string; text: string }[] = [];
+	for (const line of lines.slice(first)) {
+		const match = ALTERNATIVE.exec(line);
+		const expected = String.fromCharCode(65 + options.length);
+		if (match?.[1]?.toUpperCase() === expected) options.push({ label: expected, text: (match[2] ?? "").trim() });
+		else if (line.trim() && options.length > 0) {
+			const last = options[options.length - 1];
+			if (last) last.text = `${last.text}\n${line.trim()}`;
+		}
+	}
+	if (!question || options.length < 2) return null;
+	return { question, options };
+}
