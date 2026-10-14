@@ -287,6 +287,43 @@ describe("mensagem", () => {
 		expect(asked[0]?.text).toBe("responde\n\n[arquivo prova.txt]\nquestao 1");
 	});
 
+	it("reply: texto e autor da mensagem respondida chegam ao turno", async () => {
+		const { turns, receive } = setup();
+		const ref = {
+			content: "olha esse clip <@u9>",
+			cleanContent: "olha esse clip @Bia",
+			author: { id: "u2", username: "bruno", globalName: "Bruno" },
+			member: { displayName: "Brunão" },
+			attachments: new Map(),
+			stickers: new Map(),
+			embeds: [],
+		};
+		const { m } = message({ ...mentioned, content: "acertou uata", reference: { messageId: "m0" } });
+		const fetch = async (arg: unknown) => (typeof arg === "string" ? ref : new Map());
+		m.channel = { ...m.channel, messages: { cache: new Map(), fetch } } as never;
+		await receive(m);
+		expect(turns[0]?.repliedTo).toEqual({ authorName: "Brunão", body: "olha esse clip @Bia", fromBot: false });
+	});
+
+	it("reply a fala do bot: a respondida aparece como sua", async () => {
+		const { turns, receive } = setup();
+		const ref = { content: "kkkk", cleanContent: "kkkk", author: { id: "bot", username: "elmatadore" }, attachments: new Map(), stickers: new Map(), embeds: [] };
+		const { m } = message({ ...mentioned, content: "?", reference: { messageId: "m0" } });
+		const fetch = async (arg: unknown) => (typeof arg === "string" ? ref : new Map());
+		m.channel = { ...m.channel, messages: { cache: new Map(), fetch } } as never;
+		await receive(m);
+		expect(turns[0]?.repliedTo).toEqual({ authorName: "elmatadore", body: "kkkk", fromBot: true });
+	});
+
+	it("reply a mensagem so com imagem: avisa que era imagem", async () => {
+		const { turns, receive } = setup();
+		const ref = { content: "", cleanContent: "", author: { id: "u2", username: "bruno" }, ...photo("https://cdn/ref.jpg"), stickers: new Map(), embeds: [] };
+		const { m } = message({ ...mentioned, content: "quem é?", reference: { messageId: "m0" } });
+		m.channel = { ...m.channel, messages: { cache: new Map(), fetch: async () => ref } } as never;
+		await receive(m);
+		expect(turns[0]?.repliedTo).toEqual({ authorName: "bruno", body: "[imagem]", fromBot: false });
+	});
+
 	it("mensagem que nao dispara o bot nao baixa o arquivo", async () => {
 		const { asked, texts, receive } = setup({ routes: [[/message/, { body: "x" }]] });
 		await receive(message({ content: "olha", ...textFile("message.txt", "https://cdn/message.txt") }).m);

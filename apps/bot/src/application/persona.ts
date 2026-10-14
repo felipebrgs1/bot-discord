@@ -1,4 +1,4 @@
-import { MEMORY_GUIDANCE, MEMORY_LIMITS, memoryBlockText, turnText } from "@/domain/memory.ts";
+import { MEMORY_GUIDANCE, MEMORY_LIMITS, memoryBlockText, type RepliedLine, turnText } from "@/domain/memory.ts";
 import { DECISION_GUIDANCE } from "@/domain/verdict.ts";
 import type { MemoryStore } from "./ports/memory-store.ts";
 import type { MessageStore } from "./ports/message-store.ts";
@@ -13,6 +13,8 @@ export interface Turn {
 	text: string;
 	/** Imagens anexadas vieram de mensagens anteriores do canal, nao desta. */
 	borrowedImages?: boolean;
+	/** Mensagem a que esta responde (reply do Discord). */
+	repliedTo?: RepliedLine;
 }
 
 const RECENT_LIMIT = 15;

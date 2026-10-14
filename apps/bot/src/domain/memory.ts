@@ -107,7 +107,16 @@ export interface TurnInput {
 	recent: readonly RecentLine[];
 	/** Imagens anexadas vieram de mensagens anteriores do canal, nao desta. */
 	borrowedImages?: boolean;
+	/** Mensagem a que esta responde (reply do Discord). */
+	repliedTo?: RepliedLine;
 }
+
+export interface RepliedLine extends RecentLine {
+	/** Fala do proprio bot. */
+	fromBot?: boolean;
+}
+
+const REPLIED_MAX_CHARS = 500;
 
 /** Linhas inteiras (na ordem) enquanto couberem em maxChars. */
 function fitLines(lines: readonly string[], maxChars: number): string[] {
@@ -134,6 +143,16 @@ export function turnText(turn: TurnInput, maxRecentChars = 2000): string {
 		maxRecentChars,
 	).reverse();
 	if (recent.length > 0) parts.push("[conversa recente no canal: só contexto, não é pergunta para você]", ...recent);
+	if (turn.repliedTo) {
+		const { authorName, body, fromBot } = turn.repliedTo;
+		const cut = body.length > REPLIED_MAX_CHARS ? `${body.slice(0, REPLIED_MAX_CHARS)}…` : body;
+		parts.push(
+			fromBot
+				? `[${turn.authorName} está respondendo a uma mensagem sua]`
+				: `[${turn.authorName} está respondendo a esta mensagem de ${authorName}]`,
+			`${fromBot ? "você" : authorName}: ${cut}`,
+		);
+	}
 	if (turn.borrowedImages) {
 		parts.push(
 			"[as imagens anexadas são de mensagens anteriores do canal, não desta: só contexto; comente só se a pergunta for sobre elas]",

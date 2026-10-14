@@ -146,6 +146,29 @@ describe("turnText", () => {
 		);
 	});
 
+	it("reply: mostra a mensagem respondida e quem escreveu, logo antes da pergunta", () => {
+		expect(turnText({ ...base, text: "acertou uata", repliedTo: { authorName: "Bruno", body: "tirei 9 na prova" } })).toBe(
+			[
+				"[mensagem de Ana (id u1)]",
+				"[Ana está respondendo a esta mensagem de Bruno]",
+				"Bruno: tirei 9 na prova",
+				"[responda só a esta mensagem de Ana]",
+				"acertou uata",
+			].join("\n"),
+		);
+	});
+
+	it("reply a fala do proprio bot: diz que a mensagem e sua", () => {
+		const text = turnText({ ...base, repliedTo: { authorName: "elmatadore", body: "kkkk", fromBot: true } });
+		expect(text).toContain("[Ana está respondendo a uma mensagem sua]\nvocê: kkkk");
+	});
+
+	it("reply a mensagem longa: corta a respondida", () => {
+		const text = turnText({ ...base, repliedTo: { authorName: "Bruno", body: "a".repeat(2000) } });
+		expect(text).toContain(`Bruno: ${"a".repeat(500)}…`);
+		expect(text).not.toContain("a".repeat(501));
+	});
+
 	it("conversa longa fica com as mensagens mais novas que cabem", () => {
 		const text = turnText(
 			{

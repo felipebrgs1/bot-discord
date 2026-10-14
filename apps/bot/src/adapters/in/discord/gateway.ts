@@ -63,10 +63,17 @@ export function isTrigger(message: GuildMessage, botUserId: string): boolean {
 	});
 }
 
+/** Mensagem respondida: texto, autor, fotos e arquivos. */
+type ReferencedMessage = ImageCarrier & {
+	cleanContent?: string;
+	author?: { id: string; username: string; globalName?: string | null };
+	member?: { displayName: string } | null;
+};
+
 /** Mensagem respondida (reply com foto ou arquivo): falha isolada = sem anexo extra. */
-async function referencedMessage(m: GuildMessage): Promise<ImageCarrier | null> {
+async function referencedMessage(m: GuildMessage): Promise<ReferencedMessage | null> {
 	const refId = m.reference?.messageId;
-	const fetch = (m.channel.messages as unknown as { fetch?: (id: string) => Promise<ImageCarrier> }).fetch;
+	const fetch = (m.channel.messages as unknown as { fetch?: (id: string) => Promise<ReferencedMessage> }).fetch;
 	if (!refId || typeof fetch !== "function") return null;
 	try {
 		return await fetch.call(m.channel.messages, refId);
@@ -375,7 +382,23 @@ export class DiscordGateway {
 		);
 		// Imagem de mensagem anterior do canal: o turno avisa que e so contexto.
 		const borrowedImages = direct.length === 0 && downloaded.length > 0;
-		const incoming = { channelId: m.channelId, authorId: m.author.id, authorName, messageId: m.id, text, images: downloaded, borrowedImages };
+		const repliedTo = ref?.author
+			? {
+					authorName: ref.member?.displayName ?? ref.author.globalName ?? ref.author.username,
+					body: ref.cleanContent || (imagesOf(ref).length > 0 ? "[imagem]" : ""),
+					fromBot: ref.author.id === this.botUserId,
+				}
+			: undefined;
+		const incoming = {
+			channelId: m.channelId,
+			authorId: m.author.id,
+			authorName,
+			messageId: m.id,
+			text,
+			images: downloaded,
+			borrowedImages,
+			repliedTo: repliedTo?.body ? repliedTo : undefined,
+		};
 		if (!replies.submit(incoming, target)) {
 			logger.warn(`fila cheia canal=${m.channelId}: mensagem descartada`);
 		}

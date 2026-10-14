@@ -8,6 +8,7 @@
 
 import { cooldownRemaining } from "@/domain/cooldown.ts";
 import type { ImageData } from "@/domain/image.ts";
+import type { RepliedLine } from "@/domain/memory.ts";
 import { splitMessage } from "@/domain/reply-split.ts";
 import { roleOf } from "@/domain/roles.ts";
 import type { ChatAgent } from "./ports/chat-agent.ts";
@@ -25,6 +26,8 @@ export interface IncomingMessage {
 	images: readonly ImageData[];
 	/** Imagens vieram de mensagens anteriores do canal, nao desta. */
 	borrowedImages?: boolean;
+	/** Mensagem a que esta responde (reply do Discord). */
+	repliedTo?: RepliedLine;
 }
 
 /** Onde a resposta vai parar; implementado pelo adapter de entrada. */
