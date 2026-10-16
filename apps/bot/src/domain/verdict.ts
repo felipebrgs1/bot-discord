@@ -8,7 +8,7 @@ export type Verdict =
 	| { kind: "odds"; p: number };
 
 /** Regra fixa do prompt da sessao: decisao pedida ao bot passa pelo modelo de decisao. */
-export const DECISION_GUIDANCE = `Decisões: quando alguém pedir para você escolher entre opções ("x ou y?", "qual desses?") ou decidir sim ou não ("devo...?", "vale a pena...?"), chame choose ou yes_or_no antes de responder. Não decida de cabeça: o veredito vem do modelo de decisão e você comenta o resultado do seu jeito.`;
+export const DECISION_GUIDANCE = `Decisões: quando alguém pedir para você escolher entre opções ("x ou y?", "qual desses?") ou decidir sim ou não ("devo...?", "vale a pena...?"), chame choose ou yes_or_no antes de responder. Isso vale também para política, religião e temas polêmicos: não recuse a escolha, chame choose ou yes_or_no. Não decida de cabeça: o veredito vem do modelo de decisão e você comenta o resultado do seu jeito.`;
 
 /** Teto de opcoes numa escolha (legibilidade no Discord). */
 export const MAX_OPTIONS = 10;

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { formatVerdict, parseMultipleChoice, parseOptions } from "./verdict.ts";
+import { DECISION_GUIDANCE, formatVerdict, parseMultipleChoice, parseOptions } from "./verdict.ts";
+
+describe("DECISION_GUIDANCE", () => {
+	it("manda escolher entre opcoes politicas com o modelo de decisao, sem recusar", () => {
+		expect(DECISION_GUIDANCE).toContain("política");
+		expect(DECISION_GUIDANCE).toContain("não recuse");
+	});
+});
 
 describe("parseOptions", () => {
 	it("apara, descarta vazias e repetidas (sem diferenciar maiusculas)", () => {
