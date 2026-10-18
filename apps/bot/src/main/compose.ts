@@ -14,6 +14,7 @@ import { startConsolidationLoop } from "@/adapters/in/scheduler/consolidation-lo
 import { startNudgeLoop } from "@/adapters/in/scheduler/nudge-loop.ts";
 import { systemClock } from "@/adapters/out/clock/system-clock.ts";
 import { FsOutbox } from "@/adapters/out/fs/outbox.ts";
+import { AnthropicJsonExtractor } from "@/adapters/out/llm/anthropic-json-extractor.ts";
 import { ChatJsonExtractor } from "@/adapters/out/llm/chat-json-extractor.ts";
 import { LogBuffer } from "@/adapters/out/log/log-buffer.ts";
 import { OpenRouterImageGenerator } from "@/adapters/out/openrouter/openrouter-image-generator.ts";
@@ -242,7 +243,9 @@ export function compose(opts: ComposeOptions) {
 			log.warn("sem CHAT_API_KEY/OPENCODE_API_KEY ou chat.model: consolidação desligada");
 			return undefined;
 		}
-		const extractor = new ChatJsonExtractor({ baseUrl: boot.chat.base_url, apiKey: chatKey, model: boot.chat.model });
+		const opts = { baseUrl: boot.chat.base_url, apiKey: chatKey, model: boot.chat.model };
+		const extractor =
+			boot.chat.protocol === "anthropic" ? new AnthropicJsonExtractor(opts) : new ChatJsonExtractor(opts);
 		return startConsolidationLoop(new ReviewMemory({ messages, store: memories, memory, logger: log, extractor }), {
 			channels: () => config.all().discord.channel_ids,
 			batchSize: boot.memory.batch_size,

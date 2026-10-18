@@ -4,8 +4,12 @@ export interface DiscordConfig {
 	admin_ids: string[];
 }
 
+/** Formato da API do modelo de consolidacao: chat/completions (openai) ou /messages (anthropic). */
+export type ChatProtocol = "openai" | "anthropic";
+
 export interface ChatConfig {
 	base_url: string;
+	protocol: ChatProtocol;
 	model: string;
 	reply_max_tokens: number;
 }
@@ -62,6 +66,7 @@ const DEFAULTS: BotSettings = {
 	discord: { guild_id: "", channel_ids: [], admin_ids: [] },
 	chat: {
 		base_url: "https://openrouter.ai/api/v1",
+		protocol: "openai",
 		model: "",
 		reply_max_tokens: 1024,
 	},

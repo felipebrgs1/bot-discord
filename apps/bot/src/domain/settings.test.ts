@@ -39,6 +39,11 @@ describe("settingsFrom", () => {
 		expect(s.discord.guild_id).toBe("");
 	});
 
+	it("protocolo do chat vem openai por padrao e aceita anthropic", () => {
+		expect(defaultSettings().chat.protocol).toBe("openai");
+		expect(settingsFrom([{ key: "chat.protocol", value: "anthropic" }]).chat.protocol).toBe("anthropic");
+	});
+
 	it("chave pontuada troca um campo", () => {
 		expect(settingsFrom([{ key: "chat.model", value: "gpt-x" }]).chat.model).toBe("gpt-x");
 	});
