@@ -1,8 +1,6 @@
-/** Verifica canais parados a cada intervalo (um tick por vez). */
+/** Roda um tick a cada intervalo, um por vez (cutucao, apuracao). */
 
-import type { IdleNudge } from "@/application/idle-nudge.ts";
-
-export function startNudgeLoop(nudge: Pick<IdleNudge, "tick">, intervalMs: number): () => void {
+export function startTickLoop(job: { tick(): Promise<void> }, intervalMs: number): () => void {
 	let stopped = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const schedule = () => {
@@ -12,7 +10,7 @@ export function startNudgeLoop(nudge: Pick<IdleNudge, "tick">, intervalMs: numbe
 	};
 	const tick = async (): Promise<void> => {
 		try {
-			await nudge.tick();
+			await job.tick();
 		} catch {
 			/* proximo tick tenta de novo */
 		} finally {

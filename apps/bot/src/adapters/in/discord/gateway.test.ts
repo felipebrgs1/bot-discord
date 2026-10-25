@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "bun:test";
 import { DownloadImages } from "@/application/download-images.ts";
 import { DownloadMedia } from "@/application/download-media.ts";
+import { ElectionControl } from "@/application/election-control.ts";
 import { GenerateImage } from "@/application/generate-image.ts";
 import { ImagePromptWriter } from "@/application/image-prompt.ts";
 import { MessageLog } from "@/application/message-log.ts";
@@ -107,9 +108,19 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 	const handlers: Record<string, (...args: unknown[]) => void> = {};
 	const channelSends: [string, string][] = [];
 	const nudged: string[] = [];
+	const threads: [string, string][] = [];
+	const threadSends: [string, string][] = [];
 	const sendable = (id: string) => ({
 		isSendable: () => id !== "voz",
-		send: async (text: string) => void channelSends.push([id, text]),
+		send: async (text: string) => {
+			channelSends.push([id, text]);
+			return {
+				startThread: async ({ name }: { name: string }) => {
+					threads.push([id, name]);
+					return { send: async (t: string) => void threadSends.push([name, t]) };
+				},
+			};
+		},
 	});
 	const client = {
 		channels: { fetch: async (id: string) => (id === "sumiu" ? null : sendable(id)) },
@@ -130,6 +141,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 			nudge: async (channelId) => void nudged.push(channelId),
 		}),
 		nudgeControl: new NudgeControl({ config, adminIds: () => ["dono"] }),
+		electionControl: new ElectionControl({ config, adminIds: () => ["dono"] }),
 		games,
 		images: new DownloadImages(new FakePageFetcher(opts.routes ?? [PNG]), new FakeImageShrinker()),
 		texts: new ReadTextFiles(texts),
@@ -150,7 +162,7 @@ function setup(opts: { routes?: [RegExp, FakeRoute][]; guild?: string; media?: M
 		await new Promise((r) => setTimeout(r, 10));
 		await replies.idle();
 	};
-	return { gw, clock, config, asked, turns, texts, messages, outbox, downloads, prompts, receive, logger, handlers, channelSends, nudged };
+	return { gw, clock, config, asked, turns, texts, messages, outbox, downloads, prompts, receive, logger, handlers, channelSends, nudged, threads, threadSends };
 }
 
 function message(over: Record<string, unknown> = {}) {
@@ -608,6 +620,56 @@ describe("/cutucar", () => {
 		await gw.onInteraction(ix as never);
 		expect(ix.reply.mock.calls[0]?.[0]).toEqual({ content: "só o dono mexe no cutucão.", ephemeral: true });
 		expect(config.all().nudge.enabled).toBe(true);
+	});
+});
+
+const apuracao = (ligado: boolean | null, over: Record<string, unknown> = {}) =>
+	interaction({
+		commandName: "apuracao",
+		user: { id: "dono", username: "dono" },
+		options: { getBoolean: () => ligado },
+		...over,
+	});
+
+describe("/apuracao", () => {
+	it("dono liga no canal do comando; resposta efemera, fora do historico", async () => {
+		const { gw, config, messages } = setup();
+		const ix = apuracao(true);
+		await gw.onInteraction(ix as never);
+		expect(ix.reply.mock.calls[0]?.[0]).toEqual({
+			content: "apuração ligada em <#c1>: resumo a cada 30 min e thread por estado a cada 1h.",
+			ephemeral: true,
+		});
+		expect(config.all().election).toMatchObject({ enabled: true, channel_id: "c1" });
+		expect(messages.messages).toEqual([]);
+	});
+
+	it("quem nao e dono nao liga", async () => {
+		const { gw, config } = setup();
+		const ix = apuracao(true, { user: { id: "u1", username: "ana" } });
+		await gw.onInteraction(ix as never);
+		expect(ix.reply.mock.calls[0]?.[0]).toEqual({ content: "só o dono mexe na apuração.", ephemeral: true });
+		expect(config.all().election.enabled).toBe(false);
+	});
+});
+
+describe("openThread", () => {
+	it("posta o titulo no canal, abre a thread nele e manda os pedacos dentro, em ordem", async () => {
+		const { gw, channelSends, threads, threadSends } = setup();
+		await gw.openThread("c1", "Apuração por estado: 25/10 19:00", ["um", "dois"]);
+		expect(channelSends).toEqual([["c1", "**Apuração por estado: 25/10 19:00**"]]);
+		expect(threads).toEqual([["c1", "Apuração por estado: 25/10 19:00"]]);
+		expect(threadSends).toEqual([
+			["Apuração por estado: 25/10 19:00", "um"],
+			["Apuração por estado: 25/10 19:00", "dois"],
+		]);
+	});
+
+	it("canal inexistente ou sem texto e erro", async () => {
+		const { gw, channelSends } = setup();
+		await expect(gw.openThread("sumiu", "x", ["oi"])).rejects.toThrow("canal sumiu");
+		await expect(gw.openThread("voz", "x", ["oi"])).rejects.toThrow("canal voz");
+		expect(channelSends).toEqual([]);
 	});
 });
 

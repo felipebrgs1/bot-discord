@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { startNudgeLoop } from "./nudge-loop.ts";
+import { startTickLoop } from "./tick-loop.ts";
 
-describe("startNudgeLoop", () => {
+describe("startTickLoop", () => {
 	it("verifica a cada intervalo, ate parar", async () => {
 		let calls = 0;
-		const stop = startNudgeLoop({ tick: async () => void (calls += 1) }, 5);
+		const stop = startTickLoop({ tick: async () => void (calls += 1) }, 5);
 		await new Promise((r) => setTimeout(r, 22));
 		stop();
 		const count = calls;
@@ -15,7 +15,7 @@ describe("startNudgeLoop", () => {
 
 	it("erro num tick nao mata o laco", async () => {
 		let calls = 0;
-		const stop = startNudgeLoop(
+		const stop = startTickLoop(
 			{
 				tick: async () => {
 					calls += 1;

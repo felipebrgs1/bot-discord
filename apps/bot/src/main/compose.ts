@@ -11,7 +11,7 @@ import { DiscordGateway } from "@/adapters/in/discord/gateway.ts";
 import { createPanelHandler, startPanel } from "@/adapters/in/http-panel/server.ts";
 import { botTools } from "@/adapters/in/pi-tools/bot-tools.ts";
 import { startConsolidationLoop } from "@/adapters/in/scheduler/consolidation-loop.ts";
-import { startNudgeLoop } from "@/adapters/in/scheduler/nudge-loop.ts";
+import { startTickLoop } from "@/adapters/in/scheduler/tick-loop.ts";
 import { systemClock } from "@/adapters/out/clock/system-clock.ts";
 import { FsOutbox } from "@/adapters/out/fs/outbox.ts";
 import { AnthropicJsonExtractor } from "@/adapters/out/llm/anthropic-json-extractor.ts";
@@ -33,12 +33,15 @@ import { FfmpegImageShrinker } from "@/adapters/out/image/ffmpeg-image-shrinker.
 import { HttpPageFetcher } from "@/adapters/out/web/http-fetcher.ts";
 import { SkidrowCatalog } from "@/adapters/out/web/skidrow-catalog.ts";
 import { TavilySearch } from "@/adapters/out/web/tavily-search.ts";
+import { TseElectionResults } from "@/adapters/out/tse/tse-election-results.ts";
 import { TypeSafeJudge } from "@/adapters/out/typesafe/typesafe-judge.ts";
 import { YtDlpDownloader } from "@/adapters/out/ytdlp/ytdlp-downloader.ts";
 import { AgentMemory } from "@/application/agent-memory.ts";
 import { Decide } from "@/application/decide.ts";
 import { DownloadImages } from "@/application/download-images.ts";
 import { DownloadMedia } from "@/application/download-media.ts";
+import { ElectionControl } from "@/application/election-control.ts";
+import { ElectionWatch } from "@/application/election-watch.ts";
 import { GenerateImage } from "@/application/generate-image.ts";
 import { IdleNudge } from "@/application/idle-nudge.ts";
 import { ImagePromptWriter } from "@/application/image-prompt.ts";
@@ -62,6 +65,9 @@ import { WebSearchChain } from "@/application/web-search-chain.ts";
 
 /** Frequencia com que o cutucao verifica os canais parados. */
 const NUDGE_CHECK_MS = 60_000;
+
+/** Frequencia com que a apuracao olha o total no TSE (os intervalos de post ficam no dominio). */
+const ELECTION_CHECK_MS = 60_000;
 
 /** Modelo do /gerar no OpenRouter; OPENROUTER_IMAGE_MODEL tem precedencia. */
 const DEFAULT_OPENROUTER_IMAGE_MODEL = "inclusionai/ming-image-0.1-design";
@@ -204,6 +210,7 @@ export function compose(opts: ComposeOptions) {
 			nudge: (channelId) => nudge.force(channelId),
 		}),
 		nudgeControl: new NudgeControl({ config, adminIds: () => config.all().discord.admin_ids }),
+		electionControl: new ElectionControl({ config, adminIds: () => config.all().discord.admin_ids }),
 		games,
 		images: new DownloadImages(fetcher, new FfmpegImageShrinker()),
 		texts: new ReadTextFiles(fetcher),
@@ -227,6 +234,15 @@ export function compose(opts: ComposeOptions) {
 		},
 		instructionsFor: (channelId) => [personality(), persona.systemPromptFor(channelId)].filter(Boolean).join("\n\n"),
 		send: (channelId, chunks) => gateway.say(channelId, chunks),
+	});
+	// Apuracao de presidente (/apuracao): TSE publico, sem chave.
+	const election = new ElectionWatch({
+		results: new TseElectionResults({ http }),
+		config,
+		clock: systemClock,
+		logger: log,
+		post: (channelId, chunks) => gateway.say(channelId, chunks),
+		openThread: (channelId, name, chunks) => gateway.openThread(channelId, name, chunks),
 	});
 	const panelDeps = {
 		panel,
@@ -262,10 +278,11 @@ export function compose(opts: ComposeOptions) {
 		drawing,
 		prompting,
 		nudge,
+		election,
 		personality,
 		panelHandler: () => createPanelHandler(panelDeps),
 
-		/** Liga Discord, consolidacao, cutucao e painel; devolve o desligamento. */
+		/** Liga Discord, consolidacao, cutucao, apuracao e painel; devolve o desligamento. */
 		async start(): Promise<() => Promise<void>> {
 			const token = env("DISCORD_TOKEN");
 			if (!token) throw new Error("DISCORD_TOKEN não definido no ambiente");
@@ -278,13 +295,15 @@ export function compose(opts: ComposeOptions) {
 				log.info(`painel em http://127.0.0.1:${port}`);
 			}
 			await gateway.start(token);
-			const stopNudge = startNudgeLoop(nudge, NUDGE_CHECK_MS);
+			const stopNudge = startTickLoop(nudge, NUDGE_CHECK_MS);
+			const stopElection = startTickLoop(election, ELECTION_CHECK_MS);
 			let stopping = false;
 			return async () => {
 				if (stopping) return;
 				stopping = true;
 				stopConsolidation?.();
 				stopNudge();
+				stopElection();
 				config.dispose();
 				replies.stop();
 				await gateway.stop();

@@ -22,6 +22,16 @@ describe("defaultSettings", () => {
 		});
 	});
 
+	it("apuracao vem desligada, sem canal, no 2º turno de 2026 para presidente (TSE 6258)", () => {
+		expect(defaultSettings().election).toEqual({
+			enabled: false,
+			channel_id: "",
+			cycle: "ele2026",
+			code: "6258",
+			time_zone: "America/Sao_Paulo",
+		});
+	});
+
 	it("devolve copia nova: mexer numa nao afeta a proxima", () => {
 		defaultSettings().discord.channel_ids.push("x");
 		expect(defaultSettings().discord.channel_ids).toEqual([]);

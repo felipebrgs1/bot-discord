@@ -489,6 +489,73 @@ describe("compose", () => {
 		expect(sent).toEqual([]);
 	});
 
+	it("/apuracao do dono liga no SQLite e o tick posta o resumo do TSE no canal e a thread por estado", async () => {
+		const sent: [string, string][] = [];
+		const threads: string[] = [];
+		const handlers: Record<string, (m: unknown) => void> = {};
+		const client = {
+			...fakeDiscord([]).client,
+			on: (e: string, h: (m: unknown) => void) => void (handlers[e] = h),
+			channels: {
+				fetch: async (id: string) => ({
+					isSendable: () => true,
+					send: async (text: string) => {
+						sent.push([id, text]);
+						return { startThread: async ({ name }: { name: string }) => (threads.push(name), { send: async () => undefined }) };
+					},
+				}),
+			},
+		};
+		const tse = {
+			dg: "25/10/2026",
+			hg: "19:30:00",
+			carg: [{ cd: "1", agr: [{ par: [{ cand: [{ n: "13", nmu: "LULA", e: "n", st: "", vap: "100", pvap: "100,00" }] }] }] }],
+			s: { pst: "40,00" },
+			v: { vb: "0", tvn: "0" },
+		};
+		const asked: string[] = [];
+		const http = (async (url: string) => {
+			asked.push(url);
+			if (url.startsWith("https://resultados.tse.jus.br/oficial/ele2026/6258/dados/")) return new Response(JSON.stringify(tse));
+			throw new Error("sem rede no teste");
+		}) as unknown as typeof fetch;
+		const root = rootWith("sou um bot");
+		const app = compose({
+			dbPath: ":memory:",
+			root,
+			webDir: join(root, "dist"),
+			cwd: "/tmp",
+			env: { DISCORD_TOKEN: "tok", DASHBOARD_PORT: "0" },
+			sessionFactory: fakeSessions,
+			workerFactory: fakeWorkers,
+			http,
+			discordClient: client as never,
+		});
+		app.config.set("discord", { guild_id: "g1", channel_ids: ["c1"], admin_ids: ["dono"] });
+		const stop = await app.start();
+		const replies: unknown[] = [];
+		handlers["interactionCreate"]?.({
+			commandName: "apuracao",
+			isButton: () => false,
+			isChatInputCommand: () => true,
+			guildId: "g1",
+			channelId: "c1",
+			user: { id: "dono", username: "dono" },
+			options: { getBoolean: () => true },
+			reply: async (payload: unknown) => void replies.push(payload),
+		});
+		await new Promise((r) => setTimeout(r, 20));
+		const saved = app.db.prepare("SELECT key, value FROM config ORDER BY key;").all();
+		expect(saved).toContainEqual({ key: "election.enabled", value: "true" });
+		expect(saved).toContainEqual({ key: "election.channel_id", value: '"c1"' });
+		await app.election.tick();
+		await stop();
+		expect(sent[0]?.[0]).toBe("c1");
+		expect(sent[0]?.[1]).toContain("1. LULA (13): 100,00%");
+		expect(threads).toHaveLength(1);
+		expect(asked).toContain("https://resultados.tse.jus.br/oficial/ele2026/6258/dados/sp/sp-c0001-e006258-u.json");
+	});
+
 	it("pergunta de sim ou nao no Discord: resposta do agente com o bloco do veredito do Jev no fim", async () => {
 		const handlers: Record<string, (m: unknown) => void> = {};
 		const client = {

@@ -15,6 +15,7 @@ import {
 import type { DownloadImages } from "@/application/download-images.ts";
 import type { ReadTextFiles } from "@/application/read-text-files.ts";
 import type { DownloadMedia } from "@/application/download-media.ts";
+import type { ElectionControl } from "@/application/election-control.ts";
 import type { GenerateImage } from "@/application/generate-image.ts";
 import type { ImagePromptWriter } from "@/application/image-prompt.ts";
 import type { MessageLog } from "@/application/message-log.ts";
@@ -30,6 +31,7 @@ import type { GameHit } from "@/domain/game.ts";
 import type { ImageData } from "@/domain/image.ts";
 import type { BotSettings } from "@/domain/settings.ts";
 import { type ChannelAccess, isAllowedChannel, shouldReply } from "@/domain/trigger.ts";
+import { APURACAO_COMMAND_JSON } from "./apuracao.ts";
 import { BAIXAR_COMMAND_JSON } from "./baixar.ts";
 import { CUTUCAR_COMMAND_JSON } from "./cutucar.ts";
 import { GERAR_COMMAND_JSON } from "./gerar.ts";
@@ -107,6 +109,8 @@ export interface GatewayDeps {
 	commands: TextCommands;
 	/** Toggle e tempo do cutucao (/cutucar). */
 	nudgeControl: NudgeControl;
+	/** Toggle da apuracao de presidente (/apuracao). */
+	electionControl: ElectionControl;
 	games: SearchGames;
 	images: DownloadImages;
 	/** Anexos de texto (message.txt, .md) da mensagem e da respondida. */
@@ -163,12 +167,12 @@ export class DiscordGateway {
 
 	/** Slash commands na guild (instantaneo; global demoraria ate 1h). */
 	private async registerCommands(): Promise<void> {
-		const commands = [LISTA_COMMAND_JSON, BAIXAR_COMMAND_JSON, GERAR_COMMAND_JSON, CUTUCAR_COMMAND_JSON];
+		const commands = [LISTA_COMMAND_JSON, BAIXAR_COMMAND_JSON, GERAR_COMMAND_JSON, CUTUCAR_COMMAND_JSON, APURACAO_COMMAND_JSON];
 		try {
 			const guildId = this.deps.config.all().discord.guild_id;
 			if (guildId) await (await this.client.guilds.fetch(guildId)).commands.set(commands);
 			else await this.client.application?.commands.set(commands);
-			this.deps.logger.info("slash commands registrados: /lista, /baixar, /gerar, /cutucar");
+			this.deps.logger.info("slash commands registrados: /lista, /baixar, /gerar, /cutucar, /apuracao");
 		} catch (err) {
 			this.deps.logger.error(`slash commands ERRO: ${errorText(err)}`);
 		}
@@ -181,7 +185,13 @@ export class DiscordGateway {
 			return;
 		}
 		if (!interaction.isChatInputCommand()) return;
-		const handler = { lista: this.onLista, baixar: this.onBaixar, gerar: this.onGerar, cutucar: this.onCutucar }[interaction.commandName];
+		const handler = {
+			lista: this.onLista,
+			baixar: this.onBaixar,
+			gerar: this.onGerar,
+			cutucar: this.onCutucar,
+			apuracao: this.onApuracao,
+		}[interaction.commandName];
 		if (!handler) return;
 		const place = { guildId: interaction.guildId, channelId: interaction.channelId };
 		if (!isAllowedChannel(place, channelAccess(this.deps.config.all()))) {
@@ -197,6 +207,16 @@ export class DiscordGateway {
 			authorId: interaction.user.id,
 			enabled: interaction.options.getBoolean("ligado") ?? undefined,
 			idleMin: interaction.options.getInteger("minutos") ?? undefined,
+		});
+		await interaction.reply({ content, ephemeral: true });
+	}
+
+	/** /apuracao: como o /cutucar, efemero e fora do historico; ligar fixa este canal. */
+	private async onApuracao(interaction: ChatInputCommandInteraction): Promise<void> {
+		const content = this.deps.electionControl.apply({
+			authorId: interaction.user.id,
+			channelId: interaction.channelId,
+			enabled: interaction.options.getBoolean("ligado") ?? undefined,
 		});
 		await interaction.reply({ content, ephemeral: true });
 	}
@@ -328,6 +348,16 @@ export class DiscordGateway {
 		const channel = await this.client.channels.fetch(channelId);
 		if (!channel?.isSendable()) throw new Error(`canal ${channelId} não aceita mensagem`);
 		for (const chunk of chunks) await channel.send(chunk);
+	}
+
+	/** Posta o titulo no canal, abre uma thread nessa mensagem e manda o texto dentro (apuracao por estado). */
+	async openThread(channelId: string, name: string, chunks: readonly string[]): Promise<void> {
+		const channel = await this.client.channels.fetch(channelId);
+		if (!channel?.isSendable()) throw new Error(`canal ${channelId} não aceita mensagem`);
+		const starter = await channel.send(`**${name}**`);
+		// Limite do Discord para nome de thread.
+		const thread = await starter.startThread({ name: name.slice(0, 100) });
+		for (const chunk of chunks) await thread.send(chunk);
 	}
 
 	private async onMessage(message: Message): Promise<void> {

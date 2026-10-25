@@ -47,6 +47,16 @@ export interface NudgeConfig {
 	time_zone: string;
 }
 
+/** Apuracao de presidente postada no canal (ver election-watch.ts). */
+export interface ElectionConfig {
+	enabled: boolean;
+	channel_id: string;
+	/** Ciclo e codigo da eleicao no TSE (config ele-c.json: 6258 = 2º turno federal 2026). */
+	cycle: string;
+	code: string;
+	time_zone: string;
+}
+
 export interface BotSettings {
 	discord: DiscordConfig;
 	chat: ChatConfig;
@@ -55,6 +65,7 @@ export interface BotSettings {
 	judge: JudgeConfig;
 	dashboard: DashboardConfig;
 	nudge: NudgeConfig;
+	election: ElectionConfig;
 }
 
 export interface SettingEntry {
@@ -85,6 +96,7 @@ const DEFAULTS: BotSettings = {
 	judge: { enabled: false, threshold: 0.3, timeout_ms: 4000 },
 	dashboard: { web_user_id: "" },
 	nudge: { enabled: true, idle_min: 30, quiet_start_hour: 0, quiet_end_hour: 9, time_zone: "America/Sao_Paulo" },
+	election: { enabled: false, channel_id: "", cycle: "ele2026", code: "6258", time_zone: "America/Sao_Paulo" },
 };
 
 /** Padroes em codigo: um banco zerado ja funciona. Copia nova a cada chamada. */
