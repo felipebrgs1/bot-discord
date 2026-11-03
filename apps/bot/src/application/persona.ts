@@ -11,8 +11,6 @@ export interface Turn {
 	/** A propria mensagem (ja gravada no historico) fica fora da conversa recente. */
 	messageId: string;
 	text: string;
-	/** Imagens anexadas vieram de mensagens anteriores do canal, nao desta. */
-	borrowedImages?: boolean;
 	/** Mensagem a que esta responde (reply do Discord). */
 	repliedTo?: RepliedLine;
 }

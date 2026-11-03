@@ -135,17 +135,6 @@ describe("turnText", () => {
 		);
 	});
 
-	it("imagens emprestadas do canal: avisa que sao so contexto", () => {
-		expect(turnText({ ...base, borrowedImages: true })).toBe(
-			[
-				"[mensagem de Ana (id u1)]",
-				"[as imagens anexadas são de mensagens anteriores do canal, não desta: só contexto; comente só se a pergunta for sobre elas]",
-				"[responda só a esta mensagem de Ana]",
-				"o que vc achou?",
-			].join("\n"),
-		);
-	});
-
 	it("reply: mostra a mensagem respondida e quem escreveu, logo antes da pergunta", () => {
 		expect(turnText({ ...base, text: "acertou uata", repliedTo: { authorName: "Bruno", body: "tirei 9 na prova" } })).toBe(
 			[

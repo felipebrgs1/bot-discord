@@ -57,10 +57,4 @@ describe("Persona.turnText", () => {
 		const text = persona.turnText({ channelId: "c1", authorId: "u2", authorName: "Bruno", messageId: "m9", text: "e o meu?" });
 		expect(text).toBe("[mensagem de Bruno (id u2)]\ne o meu?");
 	});
-
-	it("avisa quando as imagens anexadas vieram de mensagens anteriores do canal", () => {
-		const { persona } = setup();
-		const text = persona.turnText({ channelId: "c1", authorId: "u2", authorName: "Bruno", messageId: "m9", text: "2001 ou paprika?", borrowedImages: true });
-		expect(text).toContain("[as imagens anexadas são de mensagens anteriores do canal");
-	});
 });

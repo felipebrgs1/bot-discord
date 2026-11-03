@@ -105,8 +105,6 @@ export interface TurnInput {
 	memory: readonly string[];
 	/** Conversa do canal desde a ultima fala do bot, antigas primeiro. */
 	recent: readonly RecentLine[];
-	/** Imagens anexadas vieram de mensagens anteriores do canal, nao desta. */
-	borrowedImages?: boolean;
 	/** Mensagem a que esta responde (reply do Discord). */
 	repliedTo?: RepliedLine;
 }
@@ -151,11 +149,6 @@ export function turnText(turn: TurnInput, maxRecentChars = 2000): string {
 				? `[${turn.authorName} está respondendo a uma mensagem sua]`
 				: `[${turn.authorName} está respondendo a esta mensagem de ${authorName}]`,
 			`${fromBot ? "você" : authorName}: ${cut}`,
-		);
-	}
-	if (turn.borrowedImages) {
-		parts.push(
-			"[as imagens anexadas são de mensagens anteriores do canal, não desta: só contexto; comente só se a pergunta for sobre elas]",
 		);
 	}
 	if (parts.length > 1) parts.push(`[responda só a esta mensagem de ${turn.authorName}]`);

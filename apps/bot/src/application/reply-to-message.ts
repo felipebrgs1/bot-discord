@@ -24,8 +24,6 @@ export interface IncomingMessage {
 	messageId: string;
 	text: string;
 	images: readonly ImageData[];
-	/** Imagens vieram de mensagens anteriores do canal, nao desta. */
-	borrowedImages?: boolean;
 	/** Mensagem a que esta responde (reply do Discord). */
 	repliedTo?: RepliedLine;
 }

@@ -42,7 +42,6 @@ import { discordReplyTarget } from "./reply-target.ts";
 type GuildMessage = OmitPartialGroupDMChannel<Message<boolean>>;
 
 const LISTA_TTL_MS = 15 * 60 * 1000;
-const RECENT_IMAGE_TTL_MS = 10 * 60 * 1000;
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -84,25 +83,6 @@ async function referencedMessage(m: GuildMessage): Promise<ReferencedMessage | n
 	}
 }
 
-/** Fotos recentes do canal via API (sobrevive a restart). */
-async function channelHistoryImageUrls(m: GuildMessage): Promise<string[]> {
-	const fetch = (
-		m.channel.messages as unknown as {
-			fetch?: (opts: { limit: number }) => Promise<{ values(): Iterable<ImageCarrier> }>;
-		}
-	).fetch;
-	if (typeof fetch !== "function") return [];
-	let batch: { values(): Iterable<ImageCarrier> };
-	try {
-		batch = await fetch.call(m.channel.messages, { limit: 10 });
-	} catch {
-		return [];
-	}
-	const out: string[] = [];
-	for (const msg of batch.values()) if (msg.id !== m.id) mergeUrls(out, imagesOf(msg));
-	return out;
-}
-
 export interface GatewayDeps {
 	config: ConfigStore;
 	replies: ReplyToMessage;
@@ -131,7 +111,6 @@ export class DiscordGateway {
 	private readonly deps: GatewayDeps;
 	private readonly client: Client;
 	private readonly listaTop = new Map<string, { hits: GameHit[]; at: number }>();
-	private readonly channelImages = new Map<string, { urls: string[]; at: number }>();
 	private botUserId = "";
 
 	constructor(deps: GatewayDeps) {
@@ -370,7 +349,6 @@ export class DiscordGateway {
 		const ref = await referencedMessage(m);
 		const direct = mergeUrls(collectImageUrls(valuesOf(m.attachments), valuesOf(m.stickers)), ref ? imagesOf(ref) : []);
 		const ownFiles = textFilesOf(m);
-		this.rememberImages(m.channelId, direct);
 		// Apelido no servidor > nome global > username; mencoes como @nome (nao <@id>).
 		const authorName = m.member?.displayName ?? m.author.globalName ?? m.author.username;
 		const content = m.cleanContent;
@@ -398,10 +376,8 @@ export class DiscordGateway {
 		const trigger = this.botUserId !== "" && isTrigger(m, this.botUserId);
 		logger.info(`msg trigger=${trigger} mencoes=${m.mentions.users.size}`);
 		if (!trigger) return;
-		// Sem imagem propria: memoria curta do canal e, por ultimo, historico via API.
-		const urls = mergeUrls([...direct], this.fresh(this.channelImages, m.channelId, RECENT_IMAGE_TTL_MS)?.urls ?? []);
-		if (urls.length === 0) mergeUrls(urls, await channelHistoryImageUrls(m));
-		const downloaded: ImageData[] = await images.run(urls).catch(() => []);
+		// So a imagem da propria mensagem e da respondida: foto antiga do canal nao vira assunto.
+		const downloaded: ImageData[] = await images.run(direct).catch(() => []);
 		const files = await texts.run([...ownFiles, ...(ref ? textFilesOf(ref) : [])]).catch(() => "");
 		const said = content || (downloaded.length > 0 && !files ? "(imagem anexada)" : "");
 		const text = [said, files].filter(Boolean).join("\n\n");
@@ -410,8 +386,6 @@ export class DiscordGateway {
 				await m.channel.send({ files: [{ attachment: path }] });
 			}),
 		);
-		// Imagem de mensagem anterior do canal: o turno avisa que e so contexto.
-		const borrowedImages = direct.length === 0 && downloaded.length > 0;
 		const repliedTo = ref?.author
 			? {
 					authorName: ref.member?.displayName ?? ref.author.globalName ?? ref.author.username,
@@ -426,23 +400,11 @@ export class DiscordGateway {
 			messageId: m.id,
 			text,
 			images: downloaded,
-			borrowedImages,
 			repliedTo: repliedTo?.body ? repliedTo : undefined,
 		};
 		if (!replies.submit(incoming, target)) {
 			logger.warn(`fila cheia canal=${m.channelId}: mensagem descartada`);
 		}
-	}
-
-	/** Memoria visual curta do canal (ultimas imagens, 10 min). */
-	private rememberImages(channelId: string, urls: string[]): void {
-		if (urls.length === 0) {
-			this.fresh(this.channelImages, channelId, RECENT_IMAGE_TTL_MS);
-			return;
-		}
-		const prev = this.fresh(this.channelImages, channelId, RECENT_IMAGE_TTL_MS)?.urls ?? [];
-		const merged = [...prev, ...urls.filter((u) => !prev.includes(u))].slice(-3);
-		this.remember(this.channelImages, channelId, { urls: merged }, RECENT_IMAGE_TTL_MS);
 	}
 
 	private remember<T extends object>(cache: Map<string, T & { at: number }>, key: string, value: T, ttlMs: number): void {
